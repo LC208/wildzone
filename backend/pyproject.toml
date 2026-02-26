@@ -10,3 +10,8 @@ dependencies = [
     "psycopg[binary]>=3.3.3",
     "python-dotenv>=1.2.1",
 ]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+]
