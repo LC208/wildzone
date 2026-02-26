@@ -1,4 +1,4 @@
-# Marketplace Compare
+# Wildzone
 
 Сервис для сравнения товаров с **Wildberries** и **Ozon** в одном интерфейсе.
 
