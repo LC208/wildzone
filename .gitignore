@@ -1,0 +1,60 @@
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# ENV
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.sqlite3
+
+backend/.venv
+backend/.pytest_cache
+backend/.mypy_cache
+backend/.ruff_cache
+
+# uv
+backend/uv.lock
+
+# Django
+backend/db.sqlite3
+backend/staticfiles
+backend/media
+
+# =========================
+# Node
+# =========================
+frontend/node_modules
+frontend/dist
+frontend/.vite
+frontend/.cache
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# =========================
+# Docker
+# =========================
+postgres_data
+*.log
+
+# =========================
+# IDE
+# =========================
+.vscode
+.idea
+*.swp
