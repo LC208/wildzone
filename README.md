@@ -1,4 +1,4 @@
-# Marketplace Compare
+# Wildzone
 
 Сервис для сравнения товаров с **Wildberries** и **Ozon** в одном интерфейсе.
 
@@ -15,7 +15,6 @@
 * Django REST Framework
 * uv (package manager)
 * PostgreSQL
-* Docker
 
 ### Frontend
 
@@ -27,7 +26,7 @@
 
 ---
 
-## ⚙️ Переменные окружения
+## Переменные окружения
 
 Создай `.env` файл на основе примера:
 
