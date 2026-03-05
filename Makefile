@@ -1,4 +1,4 @@
-.PHONY: build up down logs migrate superuser
+.PHONY: build up down logs migrate superuser shell
 
 build:
 	docker compose build
@@ -13,9 +13,12 @@ logs:
 	docker compose logs -f
 
 migrate:
-	docker compose exec backend uv run python manage.py migrate
+	docker compose exec backend python manage.py migrate
 
 superuser:
-	docker compose exec backend uv run python manage.py createsuperuser
+	docker compose exec backend python manage.py createsuperuser
 
-dev: build up
+shell:
+	docker compose exec backend python manage.py shell
+
+dev: build up logs
