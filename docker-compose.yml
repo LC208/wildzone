@@ -28,5 +28,14 @@ services:
       db:
         condition: service_healthy
 
+  frontend:
+    build: ./frontend
+    container_name: vite
+    network_mode: host
+    env_file:
+      - .env
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:

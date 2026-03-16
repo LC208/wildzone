@@ -21,4 +21,10 @@ superuser:
 shell:
 	docker compose exec backend python manage.py shell
 
+frontend-install:
+	cd frontend && npm install
+
+frontend-dev:
+	cd frontend && npm run dev
+
 dev: build up logs

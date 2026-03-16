@@ -9,110 +9,115 @@
 ## Стек технологий
 
 ### Backend
-
-* Python
-* Django
-* Django REST Framework
-* uv (package manager)
+* Python 3.14
+* Django 6 + Django REST Framework
 * PostgreSQL
+* JWT-аутентификация (SimpleJWT)
+* Selenium + curl-cffi — парсинг Ozon
+* uv — менеджер пакетов
 
 ### Frontend
+* React 18 + TypeScript
+* Vite 5
+* Tailwind CSS 3
+* Axios (с JWT-интерцептором и авторефрешем токена)
+* React Router 6
 
 ### DevOps
-
-* Docker
-* Docker Compose
+* Docker + Docker Compose
 * Makefile
 
 ---
 
-## Переменные окружения
-
-Создай `.env` файл на основе примера:
+## Быстрый старт (Docker)
 
 ```bash
+# 1. Скопируй и заполни переменные окружения
 cp .env.example .env
-```
+#    Обязательно замени SECRET_KEY и HOST_PROJECT_PATH
 
----
-
-## Запуск проекта (Docker)
-
-### Сборка контейнеров
-
-```bash
+# 2. Собери и запусти все сервисы (db + backend + frontend)
 make build
-```
-
-### Запуск
-
-```bash
 make up
+
+# 3. Примени миграции
+make migrate
 ```
+
+### Доступные сервисы
+
+| Сервис   | URL                                      |
+|----------|------------------------------------------|
+| Frontend | http://localhost:5173                    |
+| Backend  | http://localhost:8000                    |
+| Swagger  | http://localhost:8000/api/docs/          |
+| ReDoc    | http://localhost:8000/api/redoc/         |
+| DB       | localhost:5432                           |
 
 ---
 
-## Доступные сервисы
+## Локальная разработка (без Docker)
 
-| Сервис   | URL                       |
-| -------- | ------------------------- |
-| Frontend | http://localhost:5173     |
-| Backend  | http://localhost:8000     |
-| DB       | localhost:5432            |
+### Backend
+
+```bash
+cd backend
+# установить зависимости через uv
+uv sync
+# применить миграции (нужен запущенный PostgreSQL)
+uv run python manage.py migrate
+# запустить сервер
+uv run python manage.py runserver
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+# → http://localhost:5173
+# Vite проксирует /api/* → http://localhost:8000
+```
+
+Или через Makefile:
+
+```bash
+make frontend-install
+make frontend-dev
+```
 
 ---
 
 ## Управление
 
-Применить миграции:
-
 ```bash
-make migrate
-```
-
-Создать суперпользователя:
-
-```bash
-make superuser
-```
-
-Логи:
-
-```bash
-make logs
-```
-
-Остановить:
-
-```bash
-make down
+make migrate      # применить миграции
+make superuser    # создать суперпользователя
+make logs         # логи всех сервисов
+make down         # остановить
+make shell        # Django shell
 ```
 
 ---
 
-##  Основной функционал (MVP)
+## Переменные окружения
 
-* Поиск товаров
-* Фильтрация по параметрам
-* Сортировка
-* Основные характеристики
+Все переменные описаны в `.env.example`. Обязательные:
+
+| Переменная        | Описание                                    |
+|-------------------|---------------------------------------------|
+| `SECRET_KEY`      | Django secret key                           |
+| `HOST_PROJECT_PATH` | Абсолютный путь к папке проекта на хосте (для Selenium) |
+
+---
+
+## Основной функционал (MVP)
+
+* Поиск товаров по Ozon (Wildberries — в разработке)
+* Фильтрация: цена, рейтинг, срок доставки, наличие, маркетплейс
+* Сортировка по цене, рейтингу, сроку доставки, названию
 * Ссылки на оригинальные страницы товаров
-* Добавление в избранное
-
----
-
-## Разработка
-
-Backend:
-
-```bash
-cd backend
-uv sync
-uv run python manage.py runserver
-```
-
-Frontend:
-
-```bash
-
-```
+* JWT-аутентификация (регистрация, вход, авторефреш токена)
+* Избранное (только для авторизованных пользователей)
+* Swagger / ReDoc документация API
