@@ -1,12 +1,26 @@
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { clearTokens, getToken } from '../api/auth'
 
 export default function Navbar() {
   const navigate = useNavigate()
-  const isAuth = !!getToken()
+  const [isAuth, setIsAuth] = useState(!!getToken())
+
+  useEffect(() => {
+    const onStorage = () => setIsAuth(!!getToken())
+    window.addEventListener('storage', onStorage)
+    // кастомное событие для смены токена в той же вкладке
+    window.addEventListener('auth-change', onStorage)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener('auth-change', onStorage)
+    }
+  }, [])
 
   function logout() {
     clearTokens()
+    setIsAuth(false)
+    window.dispatchEvent(new Event('auth-change'))
     navigate('/login')
   }
 

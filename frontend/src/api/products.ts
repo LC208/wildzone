@@ -36,7 +36,7 @@ export const searchProducts = (params: SearchParams) =>
   client.post<ProductData[]>('/search/', params).then((r) => r.data)
 
 export const getFavourites = () =>
-  client.get<ProductData[]>('/favourites/').then((r) => r.data)
+  client.get<{ results: ProductData[] }>("/favourites/").then((r) => r.data.results)
 
 export const addFavourite = (product: ProductData) =>
   client.post('/favourites/', product)

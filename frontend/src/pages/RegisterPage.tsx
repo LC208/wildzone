@@ -12,7 +12,8 @@ export default function RegisterPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault(); setLoading(true); setError('')
-    try { await register(username, email, password); navigate('/login') }
+    try { await register(username, email, password);      window.dispatchEvent(new Event('auth-change'));
+      navigate('/');}
     catch (err: unknown) {
       const msg = (err as { response?: { data?: Record<string, string[]> } })?.response?.data
       setError(msg ? Object.values(msg).flat().join(' ') : 'Ошибка регистрации')

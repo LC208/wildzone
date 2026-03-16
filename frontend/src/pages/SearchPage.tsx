@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { searchProducts, ProductData, SearchParams } from '../api/products'
+import { searchProducts, getFavourites, ProductData, SearchParams } from '../api/products'
+import { getToken } from '../api/auth'
 import ProductCard from '../components/ProductCard'
 
 const SORT_OPTIONS = [
@@ -18,6 +19,8 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set())
+
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [minRating, setMinRating] = useState('')
@@ -26,12 +29,25 @@ export default function SearchPage() {
   const [marketplaces, setMarketplaces] = useState<string[]>([])
   const [sort, setSort] = useState('')
 
+  useEffect(() => {
+    if (!getToken()) return
+    getFavourites()
+      .then((items) => {
+        setSavedKeys(new Set(items.map((p) => `${p.marketplace}:${p.external_id}`)))
+      })
+      .catch(() => {})
+  }, [])
+
   const doSearch = useCallback(async (q: string) => {
     if (!q.trim()) return
     setLoading(true); setError('')
     try {
       const [sort_by, sort_order] = sort
-        ? (() => { const parts = sort.split('_'); const order = parts.pop()!; return [parts.join('_'), order] })()
+        ? (() => {
+            const parts = sort.split('_')
+            const order = parts.pop()!
+            return [parts.join('_'), order]
+          })()
         : ['', '']
       const params: SearchParams = {
         query: q, max_results: 30,
@@ -62,6 +78,10 @@ export default function SearchPage() {
 
   function toggleMp(mp: string) {
     setMarketplaces(prev => prev.includes(mp) ? prev.filter(x => x !== mp) : [...prev, mp])
+  }
+
+  function handleSaved(product: ProductData) {
+    setSavedKeys(prev => new Set(prev).add(`${product.marketplace}:${product.external_id}`))
   }
 
   return (
@@ -109,7 +129,12 @@ export default function SearchPage() {
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {results.map((p) => (
-          <ProductCard key={`${p.marketplace}-${p.external_id}`} product={p} />
+          <ProductCard
+            key={`${p.marketplace}-${p.external_id}`}
+            product={p}
+            isSaved={savedKeys.has(`${p.marketplace}:${p.external_id}`)}
+            onSaved={handleSaved}
+          />
         ))}
       </div>
     </div>

@@ -11,12 +11,15 @@ interface Props {
   product: ProductData
   isSaved?: boolean
   onRemove?: () => void
+  onSaved?: (product: ProductData) => void
 }
 
-export default function ProductCard({ product, isSaved, onRemove }: Props) {
-  const [saved, setSaved] = useState(isSaved ?? false)
+export default function ProductCard({ product, isSaved = false, onRemove, onSaved }: Props) {
+  const [saved, setSaved] = useState(isSaved)
   const [loading, setLoading] = useState(false)
   const mp = MP_LABELS[product.marketplace] ?? { label: product.marketplace, color: 'bg-gray-500' }
+
+  if (isSaved && !saved) setSaved(true)
 
   async function handleSave() {
     if (!getToken()) { alert('Войдите, чтобы добавить в избранное'); return }
@@ -24,6 +27,7 @@ export default function ProductCard({ product, isSaved, onRemove }: Props) {
     try {
       await addFavourite(product)
       setSaved(true)
+      onSaved?.(product)
     } catch { alert('Ошибка при сохранении') }
     finally { setLoading(false) }
   }
@@ -71,7 +75,7 @@ export default function ProductCard({ product, isSaved, onRemove }: Props) {
               </button>
             : <button onClick={handleSave} disabled={saved || loading}
                 className="flex-1 text-sm bg-indigo-600 text-white rounded-lg py-1 hover:bg-indigo-700 disabled:opacity-50 transition">
-                {saved ? '✓ Сохранено' : loading ? '...' : 'В избранное'}
+                {saved ? '✓ В избранном' : loading ? '...' : 'В избранное'}
               </button>
           }
         </div>
