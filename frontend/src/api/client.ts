@@ -1,7 +1,9 @@
 import axios from 'axios'
 import { getToken, refreshToken, setTokens, clearTokens } from './auth'
 
-const client = axios.create({ baseURL: '/api/v1' })
+const BASE_URL = import.meta.env.VITE_API_URL ?? ''
+
+const client = axios.create({ baseURL: `${BASE_URL}/api/v1` })
 
 client.interceptors.request.use((config) => {
   const token = getToken()
@@ -18,7 +20,7 @@ client.interceptors.response.use(
       try {
         const refresh = refreshToken()
         if (!refresh) throw new Error('no refresh token')
-        const { data } = await axios.post('/api/v1/auth/token/refresh/', { refresh })
+        const { data } = await axios.post(`${BASE_URL}/api/v1/auth/token/refresh/`, { refresh })
         setTokens(data.access, refresh)
         original.headers.Authorization = `Bearer ${data.access}`
         return client(original)
