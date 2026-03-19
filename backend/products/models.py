@@ -17,7 +17,7 @@ class SavedProduct(models.Model):
     """
 
     user           = models.ForeignKey(User, on_delete=models.CASCADE, related_name="favourites")
-    marketplace    = models.CharField(max_length=10, choices=[("wb", "Wildberries"), ("ozon", "Ozon")])
+    marketplace    = models.CharField(max_length=10, choices=[("wildberries", "Wildberries"), ("ozon", "Ozon")])
     external_id    = models.CharField(max_length=64)
     article        = models.CharField(max_length=128, blank=True)
     title          = models.CharField(max_length=512)
