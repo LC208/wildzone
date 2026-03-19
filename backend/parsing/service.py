@@ -12,13 +12,13 @@ import logging
 from typing import List
 
 from .scrapers.base import ProductData
-# from .scrapers.wildberries import WildberriesScraper
+from .scrapers.wildberries import WildberriesScraper
 from .scrapers.ozon import OzonScraper
 
 logger = logging.getLogger(__name__)
 
 SCRAPERS = {
-    # "wb":   WildberriesScraper,
+    "wb":   WildberriesScraper,
     "ozon": OzonScraper,
 }
 
