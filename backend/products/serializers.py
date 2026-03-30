@@ -63,7 +63,7 @@ class SearchRequestSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
         default=None,
-        help_text="Список маркетплейсов: ['wb', 'ozon']. По умолчанию — оба.",
+        help_text="Список маркетплейсов: ['wildberries', 'ozon']. По умолчанию — оба.",
     )
     max_results = serializers.IntegerField(
         required=False,
@@ -164,7 +164,7 @@ class SavedProductSerializer(serializers.ModelSerializer):
 class SaveProductInputSerializer(serializers.Serializer):
     """Входные данные для POST /api/v1/favourites/."""
 
-    marketplace = serializers.ChoiceField(choices=["wb", "ozon"])
+    marketplace = serializers.ChoiceField(choices=["wildberries", "ozon"])
     external_id = serializers.CharField(max_length=64)
     article = serializers.CharField(max_length=128, allow_blank=True, default="")
     title = serializers.CharField(max_length=512)
