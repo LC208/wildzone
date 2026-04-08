@@ -110,13 +110,13 @@ class WildberriesScraper(BaseScraper):
         params = {
             "appType": 1,
             "curr": "rub",
-            "dest": dest,          # ← регион доставки
+            "dest": dest,
             "lang": "ru",
             "page": page,
             "query": query,
             "resultset": "catalog",
             "sort": native_sort,
-            "spp": 30,
+            "spp": 0,
         }
 
         logger.debug("[WB] dest=%d, page=%d, sort=%s, query=%r", dest, page, native_sort, query)
