@@ -3,14 +3,21 @@ parsing/service.py
 
 Оркестратор парсинга.
 
-Запускает нужные парсеры и возвращает список ProductData напрямую.
-Никакой записи в БД — данные живут только в памяти в рамках запроса.
-В БД попадает только то, что пользователь явно сохранит в избранное.
+Изменения:
+- run_search принимает dest (int, опционально)
+- Если dest не передан — resolve_dest() вызывается только при наличии
+  координат; иначе используется DEFAULT_DEST
+- WB-скрапер получает dest, Ozon-скрапер — игнорирует
 """
 
-import logging
-from typing import List
+from __future__ import annotations
 
+import asyncio
+import concurrent.futures
+import logging
+from typing import List, Optional
+
+from .geo import DEFAULT_DEST, resolve_dest
 from .scrapers.base import ProductData
 from .scrapers.wildberries import WildberriesScraper
 from .scrapers.ozon import OzonScraper
@@ -23,28 +30,90 @@ SCRAPERS = {
 }
 
 
+async def _run_search_async(
+    query: str,
+    marketplaces: List[str],
+    page: int,
+    sorting: Optional[str],
+    dest: int,
+) -> List[ProductData]:
+    """Параллельный поиск по нескольким маркетплейсам."""
+
+    async def _fetch(mp_key: str) -> List[ProductData]:
+        scraper_cls = SCRAPERS.get(mp_key)
+        if not scraper_cls:
+            logger.warning("Неизвестный маркетплейс: %s", mp_key)
+            return []
+        try:
+            return await scraper_cls().async_search(
+                query, page=page, sorting=sorting, dest=dest
+            )
+        except Exception as exc:
+            logger.error("Ошибка парсинга %s: %s", mp_key, exc)
+            return []
+
+    results_per_mp = await asyncio.gather(*[_fetch(mp) for mp in marketplaces])
+    combined: List[ProductData] = []
+    for items in results_per_mp:
+        combined.extend(items)
+    return combined
+
+
 def run_search(
     query: str,
     marketplaces: List[str] = None,
-    max_per_mp: int = 20,
+    page: int = 1,
+    sorting: Optional[str] = None,
+    dest: Optional[int] = None,
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
+    address: str = "",
 ) -> List[ProductData]:
     """
-    Запустить поиск по маркетплейсам и вернуть список ProductData.
-    Результаты НЕ сохраняются в БД.
+    Синхронная точка входа.
+
+    Геолокация (влияет только на WB):
+      - Если передан dest напрямую — используется он.
+      - Если переданы latitude + longitude — вызывается resolve_dest().
+      - Иначе — DEFAULT_DEST (Иркутск).
+
+    :param query:        Поисковый запрос.
+    :param marketplaces: ['wb', 'ozon'] или None (все).
+    :param page:         Номер страницы (начиная с 1).
+    :param sorting:      Унифицированный ключ сортировки.
+    :param dest:         WB dest-код (приоритет над координатами).
+    :param latitude:     Широта для автоопределения dest.
+    :param longitude:    Долгота для автоопределения dest.
+    :param address:      Человекочитаемый адрес (необязательно).
     """
     if marketplaces is None:
         marketplaces = list(SCRAPERS.keys())
 
-    results: List[ProductData] = []
-    for mp_key in marketplaces:
-        scraper_cls = SCRAPERS.get(mp_key)
-        if not scraper_cls:
-            logger.warning("Неизвестный маркетплейс: %s", mp_key)
-            continue
-        try:
-            items = scraper_cls().search(query, max_results=max_per_mp)
-            results.extend(items)
-        except Exception as exc:
-            logger.error("Ошибка парсинга %s: %s", mp_key, exc)
+    # Разрешаем dest
+    effective_dest: int
+    if dest is not None:
+        effective_dest = dest
+    elif latitude is not None and longitude is not None:
+        effective_dest = resolve_dest(latitude, longitude, address)
+    else:
+        effective_dest = DEFAULT_DEST
 
-    return results
+    logger.debug("[Service] dest=%d, marketplaces=%s", effective_dest, marketplaces)
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(
+                    asyncio.run,
+                    _run_search_async(query, marketplaces, page, sorting, effective_dest),
+                )
+                return future.result()
+        else:
+            return loop.run_until_complete(
+                _run_search_async(query, marketplaces, page, sorting, effective_dest)
+            )
+    except RuntimeError:
+        return asyncio.run(
+            _run_search_async(query, marketplaces, page, sorting, effective_dest)
+        )

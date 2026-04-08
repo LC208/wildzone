@@ -2,21 +2,29 @@
 parsing/scrapers/base.py
 
 Базовые типы и абстрактный класс для всех скраперов.
+
+Изменения:
+- search() / _search() принимают page, sorting, dest
+- async_search() — throttling через Semaphore
+- Retry-декоратор сохранён
 """
 
 from __future__ import annotations
 
+from tenacity import AsyncRetrying, stop_after_attempt, wait_fixed
+import asyncio
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional
 from functools import wraps
-from typing import Callable, Type
+from typing import Callable, Optional, Type
 import logging
 
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
+MAX_CONCURRENT_REQUESTS: int = getattr(settings, "PARSING_MAX_CONCURRENT", 3)
 
 
 def retry(
@@ -29,7 +37,6 @@ def retry(
         @wraps(func)
         def wrapper(*args, **kwargs):
             _attempt = 0
-
             _max_attempts = getattr(settings, "PARSING_RETRY_ATTEMPTS", attempts)
             _delay = getattr(settings, "PARSING_RETRY_DELAY", delay)
 
@@ -38,7 +45,6 @@ def retry(
                     return func(*args, **kwargs)
                 except exceptions as e:
                     _attempt += 1
-
                     if _attempt >= _max_attempts:
                         logger.exception(
                             "❌ %s failed after %s attempts",
@@ -46,7 +52,6 @@ def retry(
                             _attempt,
                         )
                         raise
-
                     logger.warning(
                         "⚠️ %s failed (attempt %s/%s): %s. Retrying in %.2fs",
                         func.__qualname__,
@@ -55,13 +60,13 @@ def retry(
                         repr(e),
                         _delay,
                     )
-
                     time.sleep(_delay)
                     _delay *= backoff
 
         return wrapper
 
     return decorator
+
 
 @dataclass
 class ProductData:
@@ -84,6 +89,7 @@ class ProductData:
 
 class BaseScraper(ABC):
     marketplace: str = ""
+    _semaphore: Optional[asyncio.Semaphore] = None
 
     def __init__(self) -> None:
         self._delay: float = settings.PARSING_REQUEST_DELAY
@@ -93,11 +99,56 @@ class BaseScraper(ABC):
         delay=getattr(settings, "PARSING_RETRY_DELAY", 1.0),
         backoff=2,
     )
-    def search(self, query: str, max_results: int = 20) -> list[ProductData]:
-        return self._search(query, max_results)
+    def search(
+        self,
+        query: str,
+        page: int = 1,
+        sorting: Optional[str] = None,
+        dest: Optional[int] = None,
+    ) -> list[ProductData]:
+        """
+        Синхронный поиск.
+
+        :param query:   Поисковый запрос.
+        :param page:    Номер страницы (начиная с 1).
+        :param sorting: Унифицированный ключ сортировки.
+        :param dest:    WB dest-код региона (для WB-скрапера).
+                        None → скрапер использует свой дефолт.
+        """
+        return self._search(query, page=page, sorting=sorting, dest=dest)
+
+    async def async_search(
+        self,
+        query: str,
+        page: int = 1,
+        sorting: Optional[str] = None,
+        dest: Optional[int] = None,
+    ) -> list[ProductData]:
+        """
+        Асинхронная обёртка с throttling.
+        """
+        if self.__class__._semaphore is None:
+            self.__class__._semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+
+        async with self.__class__._semaphore:
+            loop = asyncio.get_event_loop()
+
+            async for attempt in AsyncRetrying(stop=stop_after_attempt(3), wait=wait_fixed(1)):
+                with attempt:
+                    result = await loop.run_in_executor(
+                        None,
+                        lambda: self._search(query, page=page, sorting=sorting, dest=dest)
+                    )
+                    return result
 
     @abstractmethod
-    def _search(self, query: str, max_results: int) -> list[ProductData]:
+    def _search(
+        self,
+        query: str,
+        page: int = 1,
+        sorting: Optional[str] = None,
+        dest: Optional[int] = None,
+    ) -> list[ProductData]:
         ...
 
     def _sleep(self) -> None:

@@ -1,8 +1,8 @@
 """
 parsing/scrapers/ozon.py
 
-Парсер Ozon.
-Использует curl_cffi для имитации браузерного TLS-fingerprint.
+Парсер Ozon. Принимает dest для совместимости с BaseScraper,
+но не использует его — у Ozon своя геолокация через cookies/IP.
 """
 
 from __future__ import annotations
@@ -27,19 +27,48 @@ _HEADERS = {
 
 _API_URL = "https://api.ozon.ru/composer-api.bx/page/json/v2"
 
+# ---------------------------------------------------------------------------
+# Mapping унифицированных ключей → нативные значения Ozon (sorting=)
+# Подтверждено через реальные URL Ozon и сторонние скраперы (Apify).
+# ---------------------------------------------------------------------------
+SORT_MAPPING: dict[str, str] = {
+    "popular":    "score",
+    "price_asc":  "price",
+    "price_desc": "price_desc",
+    "rating":     "rating",
+    "new":        "new",
+    "discount":   "discount",
+    "reviews":    "reviews",
+}
+
+_DEFAULT_SORT = "score"
+
 
 class OzonScraper(BaseScraper):
     marketplace = "ozon"
 
-    def _search(self, query: str, max_results: int = 20) -> list[ProductData]:
-        logger.info("[Ozon] Запрос: «%s»", query)
+    def _search(
+        self,
+        query: str,
+        page: int = 1,
+        sorting: Optional[str] = None,
+        dest: Optional[int] = None,   # не используется Ozon, только для совместимости
+    ) -> list[ProductData]:
+        native_sort = SORT_MAPPING.get(sorting or "", _DEFAULT_SORT)
+        page_param = f"&page={page}" if page > 1 else ""
+        search_url = (
+            f"/search/?text={query}"
+            f"&layout_container=categorySearchMegapagination"
+            f"&sorting={native_sort}"
+            f"{page_param}"
+        )
+
+        logger.info("[Ozon] query=%r page=%d sorting=%s", query, page, native_sort)
         try:
             with Session(impersonate="chrome120") as session:
                 resp = session.get(
                     _API_URL,
-                    params={
-                        "url": f"/search/?text={query}&layout_container=categorySearchMegapagination"
-                    },
+                    params={"url": search_url},
                     headers=_HEADERS,
                     timeout=15,
                 )
@@ -59,7 +88,7 @@ class OzonScraper(BaseScraper):
         logger.warning("[Ozon] Товаров в виджете: %d", len(items))
 
         results: list[ProductData] = []
-        for item in items[:max_results]:
+        for item in items:
             try:
                 results.append(_parse_item(item, self.marketplace))
             except Exception as exc:
@@ -70,39 +99,24 @@ class OzonScraper(BaseScraper):
 
 
 # ---------------------------------------------------------------------------
-# Внутренние функции
+# Внутренние функции (без изменений)
 # ---------------------------------------------------------------------------
 
-
 def _is_in_stock(item: dict) -> bool:
-    """
-    Определяет, есть ли товар в наличии на Ozon.
-    
-    Логика:
-    - Если есть multiButton.ozonButton.addToCart, значит можно добавить в корзину.
-    - Если maxItems > 0, товар доступен.
-    - Если inCartQuantity < maxItems, можно купить.
-    """
     add_btn = item.get("multiButton", {}).get("ozonButton", {}).get("addToCart", {})
     if not add_btn:
         return False
-
     max_items = add_btn.get("quantityButton", {}).get("maxItems", 0)
     in_cart = add_btn.get("inCartQuantity", 0)
-
-    # Если есть хотя бы один доступный товар
     if max_items > 0 and in_cart < max_items:
         return True
-
-    # Альтернатива: проверка наличия actionButton
     action = add_btn.get("actionButton", {}).get("common", {}).get("action", {})
     if action.get("id") == "addToCart":
         return True
-
     return False
 
+
 def _extract_items(data: dict) -> list:
-    """Вытащить список карточек из widgetStates → tileGridDesktop."""
     for key, value in data.get("widgetStates", {}).items():
         if not key.startswith("tileGridDesktop"):
             continue
@@ -165,7 +179,7 @@ def _parse_item(item: dict, marketplace: str) -> ProductData:
         url=url,
         image_url=image_url,
         delivery_days=_parse_delivery(delivery_str),
-        in_stock=_is_in_stock(item)
+        in_stock=_is_in_stock(item),
     )
 
 
@@ -177,14 +191,14 @@ def _extract_image(item: dict) -> str:
 
 
 def _extract_delivery(item: dict) -> str:
-    """Извлечь строку с датой/сроком доставки из multiButton."""
-    btn = item.get("multiButton", {}).get("ozonButton", {}).get("addToCart", {}).get("actionButton", {})
+    btn = (
+        item.get("multiButton", {})
+        .get("ozonButton", {})
+        .get("addToCart", {})
+        .get("actionButton", {})
+    )
     return btn.get("common", {}).get("action", {}).get("title", "") or btn.get("title", "")
 
-
-# ---------------------------------------------------------------------------
-# Парсеры примитивов
-# ---------------------------------------------------------------------------
 
 def _parse_price(text: str) -> Optional[float]:
     cleaned = text.replace(",", ".").replace("\u2009", "").replace("\xa0", "")

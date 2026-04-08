@@ -60,7 +60,12 @@ class SearchView(APIView):
         items = run_search(
             params["query"],
             marketplaces=params.get("marketplaces"),
-            max_per_mp=params["max_results"],
+            page=params["page"],
+            sorting=params.get("sorting"),
+            dest=params.get("dest"),
+            latitude=params.get("latitude"),
+            longitude=params.get("longitude"),
+            address=params.get("address", ""),
         )
 
         items = _apply_filters(items, params)

@@ -12,6 +12,7 @@ PARSING_REQUEST_DELAY = 1.0
 
 PARSING_RETRY_ATTEMPTS = 3
 PARSING_RETRY_DELAY = 5.0
+PARSING_MAX_CONCURRENT = 3  
 # ---------------------------------------------------------------------------
 # Security
 # ---------------------------------------------------------------------------

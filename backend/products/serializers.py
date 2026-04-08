@@ -13,6 +13,19 @@ from rest_framework import serializers
 
 from .models import SavedProduct
 
+# Все допустимые унифицированные ключи сортировки.
+# Каждый скрапер самостоятельно переводит их в нативные значения
+# через свой SORT_MAPPING (см. wildberries.py / ozon.py).
+SORTING_CHOICES = [
+    "popular",    # по популярности (дефолт)
+    "price_asc",  # цена ↑
+    "price_desc", # цена ↓
+    "rating",     # по рейтингу
+    "new",        # новинки
+    "discount",   # по скидке
+    "reviews",    # по кол-ву отзывов
+]
+
 
 # ---------------------------------------------------------------------------
 # Поиск
@@ -39,7 +52,6 @@ class ProductDataSerializer(serializers.Serializer):
     attributes = serializers.DictField()
 
     def get_discount_percent(self, obj) -> float | None:
-        # ProductData — dataclass, атрибуты всегда присутствуют
         price = obj.price
         orig = obj.original_price
         if price and orig and orig > 0:
@@ -63,28 +75,84 @@ class SearchRequestSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
         default=None,
-        help_text="Список маркетплейсов: ['wildberries', 'ozon']. По умолчанию — оба.",
+        help_text="Список маркетплейсов: ['wb', 'ozon']. По умолчанию — оба.",
     )
-    max_results = serializers.IntegerField(
+
+    # --- Пагинация ---
+    page = serializers.IntegerField(
         required=False,
-        default=20,
+        default=1,
         min_value=1,
-        max_value=200,
-        help_text="Максимальное количество результатов с каждого маркетплейса.",
+        help_text="Номер страницы выдачи маркетплейса (начиная с 1).",
     )
+
+    # --- Нативная сортировка маркетплейса ---
+    sorting = serializers.ChoiceField(
+        choices=SORTING_CHOICES,
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text=(
+            "Нативная сортировка маркетплейса: "
+            "popular | price_asc | price_desc | rating | new | discount | reviews. "
+            "Применяется на стороне API маркетплейса, до возврата данных."
+        ),
+    )
+
+    # --- Геолокация (влияет на WB: цены, наличие, сроки доставки) ---
+    # Три взаимоисключающих способа передать регион (приоритет: dest > lat/lon > дефолт):
+    #   1. dest       — готовый WB dest-код (если знаете его напрямую)
+    #   2. lat + lon  — координаты; бэкенд сам вызовет WB geo API
+    #   3. ничего     — используется DEFAULT_DEST (Иркутск)
+    dest = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text=(
+            "WB dest-код региона (напр. -5827722 для Иркутска). "
+            "Если не указан, используются latitude+longitude или дефолт (Иркутск)."
+        ),
+    )
+    latitude = serializers.FloatField(
+        required=False,
+        allow_null=True,
+        default=None,
+        min_value=-90.0,
+        max_value=90.0,
+        help_text="Широта для определения региона WB.",
+    )
+    longitude = serializers.FloatField(
+        required=False,
+        allow_null=True,
+        default=None,
+        min_value=-180.0,
+        max_value=180.0,
+        help_text="Долгота для определения региона WB.",
+    )
+    address = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        max_length=256,
+        help_text="Человекочитаемый адрес (необязательно, только подсказка для WB geo API).",
+    )
+
+    # --- Клиентская сортировка (постобработка в памяти) ---
     sort_by = serializers.ChoiceField(
         choices=SORT_BY_CHOICES,
         required=False,
         allow_null=True,
         default=None,
-        help_text="Поле для сортировки: price | rating | delivery_days | title",
+        help_text="Поле для клиентской сортировки результатов: price | rating | delivery_days | title",
     )
     sort_order = serializers.ChoiceField(
         choices=SORT_ORDER_CHOICES,
         required=False,
         default="asc",
-        help_text="Направление сортировки: asc | desc",
+        help_text="Направление клиентской сортировки: asc | desc",
     )
+
+    # --- Фильтры ---
     min_price = serializers.DecimalField(
         required=False,
         allow_null=True,
@@ -130,6 +198,15 @@ class SearchRequestSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {"max_price": "max_price должен быть больше или равен min_price."}
             )
+
+        # Если передана только одна из координат — ошибка
+        lat = attrs.get("latitude")
+        lon = attrs.get("longitude")
+        if (lat is None) != (lon is None):
+            raise serializers.ValidationError(
+                {"latitude": "latitude и longitude должны передаваться вместе."}
+            )
+
         return attrs
 
 
@@ -175,7 +252,7 @@ class SaveProductInputSerializer(serializers.Serializer):
     reviews_count = serializers.IntegerField(default=0, min_value=0)
     in_stock = serializers.BooleanField(default=True)
     delivery_days = serializers.IntegerField(allow_null=True, required=False, min_value=0)
-    url = serializers.URLField(max_length=1024)  # URLField вместо CharField для валидации
+    url = serializers.URLField(max_length=1024)
     image_url = serializers.URLField(max_length=1024, allow_blank=True, default="")
     category = serializers.CharField(max_length=256, allow_blank=True, default="")
     attributes = serializers.DictField(default=dict)
