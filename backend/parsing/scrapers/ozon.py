@@ -32,7 +32,7 @@ class OzonScraper(BaseScraper):
     marketplace = "ozon"
 
     def _search(self, query: str, max_results: int = 20) -> list[ProductData]:
-        logger.warning("[Ozon] Запрос: «%s»", query)
+        logger.info("[Ozon] Запрос: «%s»", query)
         try:
             with Session(impersonate="chrome120") as session:
                 resp = session.get(
@@ -43,7 +43,7 @@ class OzonScraper(BaseScraper):
                     headers=_HEADERS,
                     timeout=15,
                 )
-            logger.warning("[Ozon] HTTP %s — %d байт", resp.status_code, len(resp.content))
+            logger.info("[Ozon] HTTP %s — %d байт", resp.status_code, len(resp.content))
             resp.raise_for_status()
         except Exception as exc:
             logger.error("[Ozon] Ошибка запроса: %s", exc)

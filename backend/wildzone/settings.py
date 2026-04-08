@@ -167,7 +167,7 @@ SELENIUM_DRIVER_OPTIONS = {
 PARSING_REQUEST_DELAY = float(os.getenv("PARSING_REQUEST_DELAY", "1.5"))
 
 
-CSRF_TRUSTED_ORIGINS = ['https://wildzone.lc208.space']
+CSRF_TRUSTED_ORIGINS = ['https://wildzone.lc208.space', 'http://localhost']
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
