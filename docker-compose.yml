@@ -13,7 +13,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
   backend:
     build: ./backend
     container_name: django
@@ -27,6 +32,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
 
   frontend:
     build: ./frontend
@@ -36,6 +47,12 @@ services:
       - .env
     depends_on:
       - backend
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
 
 volumes:
   postgres_data:

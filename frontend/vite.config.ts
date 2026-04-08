@@ -5,6 +5,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    allowedHosts: [
+       'wildzone.lc208.space',
+       'localhost',
+    ],
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
