@@ -31,8 +31,8 @@ _API_URL = "https://api.ozon.ru/composer-api.bx/page/json/v2"
 class OzonScraper(BaseScraper):
     marketplace = "ozon"
 
-    def search(self, query: str, max_results: int = 20) -> list[ProductData]:
-        logger.info("[Ozon] Запрос: «%s»", query)
+    def _search(self, query: str, max_results: int = 20) -> list[ProductData]:
+        logger.warning("[Ozon] Запрос: «%s»", query)
         try:
             with Session(impersonate="chrome120") as session:
                 resp = session.get(
@@ -43,7 +43,7 @@ class OzonScraper(BaseScraper):
                     headers=_HEADERS,
                     timeout=15,
                 )
-            logger.info("[Ozon] HTTP %s — %d байт", resp.status_code, len(resp.content))
+            logger.warning("[Ozon] HTTP %s — %d байт", resp.status_code, len(resp.content))
             resp.raise_for_status()
         except Exception as exc:
             logger.error("[Ozon] Ошибка запроса: %s", exc)
@@ -56,7 +56,7 @@ class OzonScraper(BaseScraper):
             return []
 
         items = _extract_items(data)
-        logger.info("[Ozon] Товаров в виджете: %d", len(items))
+        logger.warning("[Ozon] Товаров в виджете: %d", len(items))
 
         results: list[ProductData] = []
         for item in items[:max_results]:
@@ -72,6 +72,34 @@ class OzonScraper(BaseScraper):
 # ---------------------------------------------------------------------------
 # Внутренние функции
 # ---------------------------------------------------------------------------
+
+
+def _is_in_stock(item: dict) -> bool:
+    """
+    Определяет, есть ли товар в наличии на Ozon.
+    
+    Логика:
+    - Если есть multiButton.ozonButton.addToCart, значит можно добавить в корзину.
+    - Если maxItems > 0, товар доступен.
+    - Если inCartQuantity < maxItems, можно купить.
+    """
+    add_btn = item.get("multiButton", {}).get("ozonButton", {}).get("addToCart", {})
+    if not add_btn:
+        return False
+
+    max_items = add_btn.get("quantityButton", {}).get("maxItems", 0)
+    in_cart = add_btn.get("inCartQuantity", 0)
+
+    # Если есть хотя бы один доступный товар
+    if max_items > 0 and in_cart < max_items:
+        return True
+
+    # Альтернатива: проверка наличия actionButton
+    action = add_btn.get("actionButton", {}).get("common", {}).get("action", {})
+    if action.get("id") == "addToCart":
+        return True
+
+    return False
 
 def _extract_items(data: dict) -> list:
     """Вытащить список карточек из widgetStates → tileGridDesktop."""
@@ -137,6 +165,7 @@ def _parse_item(item: dict, marketplace: str) -> ProductData:
         url=url,
         image_url=image_url,
         delivery_days=_parse_delivery(delivery_str),
+        in_stock=_is_in_stock(item)
     )
 
 

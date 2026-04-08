@@ -2,19 +2,15 @@ from __future__ import annotations
 
 
 import logging
-from typing import Optional
-import random
+import time
+from typing import List, Dict, Optional
 
-from curl_cffi.requests import Session
-
+from curl_cffi import requests as curl_requests
 
 from .base import BaseScraper, ProductData
 
 
 logger = logging.getLogger(__name__)
-
-
-_SEARCH_URL = "https://search.wb.ru/exactmatch/ru/common/v18/search"
 
 
 _HEADERS = {
@@ -29,135 +25,125 @@ _HEADERS = {
 class WildberriesScraper(BaseScraper):
     marketplace = "wildberries"
 
+    SEARCH_URL = "https://search.wb.ru/exactmatch/ru/common/v18/search"
+    CDN_URL = "https://cdn.wbbasket.ru/api/v3/upstreams"
 
-    def search(self, query: str, max_results: int = 20) -> list[ProductData]:
-        logger.info("[WB] Запрос: «%s»", query)
-        try:
-            with Session(impersonate="chrome120") as session:
-                resp = session.get(
-                    _SEARCH_URL,
-                    params={
-                        "appType": 1,
-                        "curr": "rub",
-                        "dest": -1257786,
-                        "lang": "ru",
-                        "page": 1,
-                        "query": query,
-                        "resultset": "catalog",
-                        "sort": "popular",
-                        "spp": 30,
-                    },
-                    headers=_HEADERS,
-                    timeout=15,
-                )
-            logger.info("[WB] HTTP %s — %d байт", resp.status_code, len(resp.content))
-            resp.raise_for_status()
-            self._sleep()
-        except Exception as exc:
-            logger.error("[WB] Ошибка запроса: %s", exc)
-            return []
+    def __init__(self) -> None:
+        super().__init__()
+        self._route_map: Optional[List[Dict]] = None
 
-
-        try:
-            data = resp.json()
-        except Exception as exc:
-            logger.error("[WB] Не удалось распарсить JSON: %s", exc)
-            return []
-
-
-        products = data.get("products", [])
-        logger.info("[WB] Товаров найдено: %d", len(products))
-
+    # ----------------------------------
+    # PUBLIC API
+    # ----------------------------------
+    def _search(self, query: str, max_results: int = 20) -> list[ProductData]:
+        products = self._wb_search(query)
+        route_map = self._get_route_map()
 
         results: list[ProductData] = []
-        for item in products[:max_results]:
+
+        for p in products[:max_results]:
             try:
-                results.append(_parse_item(item, self.marketplace))
-            except Exception as exc:
-                logger.warning("[WB] Ошибка парсинга карточки: %s", exc)
+                nm_id = p["id"]
 
+                price_data = p.get("sizes", [{}])[0].get("price", {})
 
-        logger.info("[WB] Итого: %d", len(results))
+                product = ProductData(
+                    external_id=str(nm_id),
+                    title=p.get("name", ""),
+                    url=f"https://www.wildberries.ru/catalog/{nm_id}/detail.aspx",
+                    marketplace=self.marketplace,
+                    article=str(nm_id),
+                    price=self._safe_price(price_data.get("product")),
+                    original_price=self._safe_price(price_data.get("basic")),
+                    brand=p.get("brand", ""),
+                    rating=p.get("reviewRating"),
+                    reviews_count=p.get("feedbacks", 0),
+                    in_stock=p.get("totalQuantity", 0) > 0,
+                    image_url=self._get_image(nm_id, route_map),
+                    category=p.get("entity", ""),
+                )
+
+                results.append(product)
+
+            except Exception:
+                continue  # не падаем из-за одного товара
+
         return results
 
+    # ----------------------------------
+    # WB API
+    # ----------------------------------
+    def _wb_search(self, query: str, page: int = 1) -> List[Dict]:
+        params = {
+            "appType": 1,
+            "curr": "rub",
+            "dest": -1257786,
+            "lang": "ru",
+            "page": 10,
+            "query": query,
+            "resultset": "catalog",
+            "sort": "popular_desc",
+            "spp": 30,
+        }
 
+        r = curl_requests.get(
+            self.SEARCH_URL,
+            params=params,
+            impersonate="chrome110",
+            timeout=10,
+        )
+        r.raise_for_status()
 
-def _parse_item(item: dict, marketplace: str) -> ProductData:
-    
-    product_id = str(item.get("id", ""))
+        data = r.json()
 
-    # Цена
-    price = None
-    original_price = None
-    sizes = item.get("sizes", [])
-    if sizes and len(sizes) > 0:
-        price_data = sizes[0].get("price", {})
-        sale = price_data.get("product")
-        original = price_data.get("basic")
-        price = sale / 100 if sale else None
-        original_price = original / 100 if original else None
+        # 🔥 новая структура
+        return data.get("products", [])
 
-    url = f"https://www.wildberries.ru/catalog/{product_id}/detail.aspx"
-    image_url = _build_image_url(int(product_id)) if product_id else ""
+    # ----------------------------------
+    # CDN (basket)
+    # ----------------------------------
+    def _get_route_map(self) -> List[Dict]:
+        if self._route_map:
+            return self._route_map
 
-    rating_raw = item.get("rating")
-    rating = None
-    if rating_raw is not None:
-        try:
-            wb_rating = float(str(rating_raw))
-            if wb_rating == 5.0:
-                rating = round(random.uniform(4.6, 5.0), 1)  # 4.6-5.0
-            elif wb_rating == 4.0:
-                rating = round(random.uniform(4.0, 4.5), 1)  # 4.0-4.5
-        except:
-            pass
+        ts = int(time.time() * 1000)
 
-    # ✅ ИСПРАВЛЕННОЕ НАЛИЧИЕ (WB логика)
-    in_stock = True
-    if sizes and len(sizes) > 0:
-        stock = sizes[0].get("stock", {}).get("amount", 1)
-        in_stock = stock > 0
+        r = curl_requests.get(
+            f"{self.CDN_URL}?t={ts}",
+            impersonate="chrome110",
+            timeout=5,
+        )
+        r.raise_for_status()
 
-    delivery_days = None
+        data = r.json()
 
-    return ProductData(
-        marketplace=marketplace,
-        external_id=product_id,
-        title=item.get("name", ""),
-        brand=item.get("brand", ""),
-        price=price,
-        original_price=original_price,
-        rating=rating,
-        reviews_count=item.get("feedbacks", 0),
-        url=url,
-        image_url=image_url,
-        delivery_days=delivery_days,
-        in_stock=in_stock,
-    )
+        self._route_map = data["origin"]["mediabasket_route_map"][0]["hosts"]
+        return self._route_map
 
+    def _find_host(self, vol: int, route_map: List[Dict]) -> Optional[str]:
+        for entry in route_map:
+            if entry["vol_range_from"] <= vol <= entry["vol_range_to"]:
+                return entry["host"]
+        return None
 
+    # ----------------------------------
+    # IMAGE (быстро)
+    # ----------------------------------
+    def _get_image(self, nm_id: int, route_map: List[Dict]) -> str:
+        vol = nm_id // 100000
+        part = nm_id // 1000
 
-def _build_image_url(product_id: int) -> str:
-    vol = product_id // 100_000
-    part = product_id // 1_000
-    if vol <= 143: basket = "01"
-    elif vol <= 287: basket = "02"
-    elif vol <= 431: basket = "03"
-    elif vol <= 719: basket = "04"
-    elif vol <= 1007: basket = "05"
-    elif vol <= 1061: basket = "06"
-    elif vol <= 1115: basket = "07"
-    elif vol <= 1169: basket = "08"
-    elif vol <= 1313: basket = "09"
-    elif vol <= 1601: basket = "10"
-    elif vol <= 1655: basket = "11"
-    elif vol <= 1919: basket = "12"
-    elif vol <= 2045: basket = "13"
-    elif vol <= 2189: basket = "14"
-    elif vol <= 2405: basket = "15"
-    elif vol <= 2621: basket = "16"
-    else: basket = "17"
-    return (
-        f"https://basket-{basket}.wbbasket.ru"
-        f"/vol{vol}/part{part}/{product_id}/images/c516x688/1.webp"
-    )
+        host = self._find_host(vol, route_map)
+        if not host:
+            return ""
+
+        return f"https://{host}/vol{vol}/part{part}/{nm_id}/images/c516x688/1.webp"
+
+    # ----------------------------------
+    # HELPERS
+    # ----------------------------------
+    @staticmethod
+    def _safe_price(value: Optional[int]) -> Optional[float]:
+        if value is None:
+            return None
+        return value / 100

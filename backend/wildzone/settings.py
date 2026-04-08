@@ -8,6 +8,10 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+PARSING_REQUEST_DELAY = 1.0
+
+PARSING_RETRY_ATTEMPTS = 3
+PARSING_RETRY_DELAY = 5.0
 # ---------------------------------------------------------------------------
 # Security
 # ---------------------------------------------------------------------------
