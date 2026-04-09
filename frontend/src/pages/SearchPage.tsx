@@ -20,7 +20,6 @@ const SORT_OPTIONS = [
   { value: 'delivery_days_asc', label: 'Доставка ↑' },
 ]
 
-const MARKETPLACES = ['wb', 'ozon']
 const POPULAR = ['кроссовки', 'наушники', 'рюкзак', 'смартфон', 'пауэрбанк', 'куртка']
 
 export default function SearchPage() {
@@ -35,7 +34,6 @@ export default function SearchPage() {
   const [minRating, setMinRating] = useState('')
   const [maxDelivery, setMaxDelivery] = useState('')
   const [inStock, setInStock] = useState(false)
-  const [marketplaces, setMarketplaces] = useState<string[]>([])
   const [sort, setSort] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize] = useState(12)
@@ -79,7 +77,6 @@ export default function SearchPage() {
         max_results: 100,
         page: nextPage,
         page_size: pageSize,
-        ...(marketplaces.length ? { marketplaces } : {}),
         ...(minPrice ? { min_price: Number(minPrice) } : {}),
         ...(maxPrice ? { max_price: Number(maxPrice) } : {}),
         ...(minRating ? { min_rating: Number(minRating) } : {}),
@@ -122,10 +119,6 @@ export default function SearchPage() {
     if (query.trim()) doSearch(query.trim(), 1)
   }
 
-  function toggleMp(mp: string) {
-    setMarketplaces((prev) => (prev.includes(mp) ? prev.filter((x) => x !== mp) : [...prev, mp]))
-  }
-
   function handleSaved(product: ProductData) {
     setSavedKeys((prev) => new Set(prev).add(`${product.marketplace}:${product.external_id}`))
   }
@@ -133,40 +126,42 @@ export default function SearchPage() {
   return (
     <div>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3 mb-4 relative">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onFocus={() => setShowSuggestions(true)}
-              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-              placeholder="Поиск..."
-              className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            />
-            {showSuggestions && suggestions.length > 0 && (
-              <div className="absolute left-0 right-0 top-full mt-2 z-20 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-                {suggestions.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      setQuery(item)
-                      setSearchParams({ q: item })
-                      doSearch(item, 1)
-                    }}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-            )}
+        <div className="relative flex-1">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                placeholder="Поиск..."
+                className="w-full border border-gray-300 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+              {showSuggestions && suggestions.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-2 z-20 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                  {suggestions.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setQuery(item)
+                        setSearchParams({ q: item })
+                        doSearch(item, 1)
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button type="submit" className="bg-indigo-600 text-white px-5 py-2 rounded-xl text-sm hover:bg-indigo-700 transition">
+              Найти
+            </button>
           </div>
-          <button type="submit" className="bg-indigo-600 text-white px-5 py-2 rounded-xl text-sm hover:bg-indigo-700 transition">
-            Найти
-          </button>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -188,19 +183,6 @@ export default function SearchPage() {
       </form>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6 flex flex-wrap gap-3 items-end">
-        <div className="flex gap-2">
-          {MARKETPLACES.map((mp) => (
-            <button
-              key={mp}
-              type="button"
-              onClick={() => toggleMp(mp)}
-              className={`px-3 py-1 rounded-lg text-sm border transition ${marketplaces.includes(mp) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400'}`}
-            >
-              {mp === 'wb' ? 'Wildberries' : 'Ozon'}
-            </button>
-          ))}
-        </div>
-
         <div className="flex gap-2 items-center">
           <input type="number" placeholder="Цена от" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} className="w-24 border border-gray-300 rounded-lg px-2 py-1 text-sm" />
           <span className="text-gray-400">—</span>
