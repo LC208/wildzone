@@ -54,7 +54,7 @@ export default function SearchPage() {
     if (!getToken()) return
     getFavourites()
       .then((items) => {
-        setSavedKeys(new Set(items.map((p) => `${p.marketplace}:${p.external_id}`)))
+        setSavedKeys(new Set(items.map((p) => `${normalizeMarketplace(p.marketplace)}:${p.external_id}`)))
       })
       .catch(() => {})
   }, [])
@@ -182,13 +182,15 @@ export default function SearchPage() {
       : items.filter(isWb)
 
     if (marketplace === 'ozon') {
-      setOzonItems((prev) => uniqueMerge(prev, filtered))
       setOzonBackendPage(nextBackendPage)
-      if (filtered.length === 0) setOzonHasMore(false)
+      if (filtered.length > 0) {
+        setOzonItems((prev) => uniqueMerge(prev, filtered))
+      }
     } else {
-      setWbItems((prev) => uniqueMerge(prev, filtered))
       setWbBackendPage(nextBackendPage)
-      if (filtered.length === 0) setWbHasMore(false)
+      if (filtered.length > 0) {
+        setWbItems((prev) => uniqueMerge(prev, filtered))
+      }
     }
 
     return filtered
@@ -203,30 +205,31 @@ export default function SearchPage() {
     let currentOzonBackendPage = ozonBackendPage
     let currentWbBackendPage = wbBackendPage
 
-    let canLoadOzon = ozonHasMore
-    let canLoadWb = wbHasMore
+    let failedToLoad = false
 
-    while (nextOzonItems.length < needed && canLoadOzon) {
+    if (nextOzonItems.length < needed && ozonHasMore) {
       const fetched = await fetchMarketplaceNextPage(q, 'ozon', currentOzonBackendPage + 1)
       if (!fetched.length) {
-        canLoadOzon = false
+        failedToLoad = true
+        setOzonHasMore(false)
       } else {
         currentOzonBackendPage += 1
         nextOzonItems = uniqueMerge(nextOzonItems, fetched)
       }
     }
 
-    while (nextWbItems.length < needed && canLoadWb) {
+    if (nextWbItems.length < needed && wbHasMore) {
       const fetched = await fetchMarketplaceNextPage(q, 'wb', currentWbBackendPage + 1)
       if (!fetched.length) {
-        canLoadWb = false
+        failedToLoad = true
+        setWbHasMore(false)
       } else {
         currentWbBackendPage += 1
         nextWbItems = uniqueMerge(nextWbItems, fetched)
       }
     }
 
-    return { nextOzonItems, nextWbItems }
+    return { nextOzonItems, nextWbItems, failedToLoad }
   }
 
   async function goToPage(nextPage: number) {
@@ -236,15 +239,25 @@ export default function SearchPage() {
     setError('')
 
     try {
-      const { nextOzonItems, nextWbItems } = await ensureEnoughItemsForPage(query.trim(), nextPage)
+      const { nextOzonItems, nextWbItems, failedToLoad } =
+        await ensureEnoughItemsForPage(query.trim(), nextPage)
+
+      if (failedToLoad) {
+        setError('Не удалось загрузить следующую страницу. Повторите попытку.')
+        return
+      }
+
       const nextResults = buildVisiblePage(nextOzonItems, nextWbItems, nextPage)
 
-      if (nextResults.length === 0 && nextPage > 1) return
+      if (nextResults.length === 0 && nextPage > 1) {
+        setError('Данные для следующей страницы не получены. Повторите попытку.')
+        return
+      }
 
       setResults(nextResults)
       setPage(nextPage)
     } catch {
-      setError('Не удалось загрузить страницу')
+      setError('Не удалось загрузить следующую страницу. Повторите попытку.')
     } finally {
       setLoading(false)
     }
@@ -259,8 +272,10 @@ export default function SearchPage() {
   const canGoNext = useMemo(() => {
     const nextPage = page + 1
     const needed = nextPage * PER_MARKETPLACE
+
     const enoughLocal = ozonItems.length >= needed || wbItems.length >= needed
     const canFetchMore = ozonHasMore || wbHasMore
+
     return enoughLocal || canFetchMore
   }, [page, ozonItems.length, wbItems.length, ozonHasMore, wbHasMore])
 
