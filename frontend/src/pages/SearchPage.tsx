@@ -150,20 +150,13 @@ export default function SearchPage() {
       setOzonBackendPage(1)
       setWbBackendPage(1)
 
-      setOzonHasMore(ozon.length > 0)
-      setWbHasMore(wb.length > 0)
+      setOzonHasMore(true)
+      setWbHasMore(true)
 
       setPage(1)
 
       const firstPage = buildVisiblePage(ozon, wb, 1)
-
-      if (firstPage.ozonSlice.length < PER_MARKETPLACE || firstPage.wbSlice.length < PER_MARKETPLACE) {
-        setResults([])
-        setError('Недостаточно данных для формирования полной страницы 4 Ozon + 4 Wildberries.')
-      } else {
-        setResults(firstPage.items)
-      }
-
+      setResults(firstPage.items)
       saveSearchHistory(q)
     } catch {
       setError('Ошибка при поиске. Проверьте, что backend запущен.')
@@ -190,23 +183,33 @@ export default function SearchPage() {
       ? items.filter(isOzon)
       : items.filter(isWb)
 
-    if (marketplace === 'ozon') {
-      setOzonBackendPage(nextBackendPage)
-      if (filtered.length > 0) {
-        setOzonItems((prev) => uniqueMerge(prev, filtered))
-      } else {
-        setOzonHasMore(false)
+    return filtered
+  }
+
+  async function loadMarketplaceUntilEnough(
+    q: string,
+    marketplace: 'ozon' | 'wb',
+    currentItems: ProductData[],
+    currentBackendPage: number,
+    needed: number
+  ) {
+    let items = currentItems
+    let backendPage = currentBackendPage
+    let gotAny = false
+
+    while (items.length < needed) {
+      const fetched = await fetchMarketplaceNextPage(q, marketplace, backendPage + 1)
+
+      if (!fetched.length) {
+        break
       }
-    } else {
-      setWbBackendPage(nextBackendPage)
-      if (filtered.length > 0) {
-        setWbItems((prev) => uniqueMerge(prev, filtered))
-      } else {
-        setWbHasMore(false)
-      }
+
+      gotAny = true
+      backendPage += 1
+      items = uniqueMerge(items, fetched)
     }
 
-    return filtered
+    return { items, backendPage, gotAny }
   }
 
   async function ensureEnoughItemsForPage(q: string, targetPage: number) {
@@ -215,33 +218,50 @@ export default function SearchPage() {
     let nextOzonItems = ozonItems
     let nextWbItems = wbItems
 
-    let currentOzonBackendPage = ozonBackendPage
-    let currentWbBackendPage = wbBackendPage
+    let nextOzonBackendPage = ozonBackendPage
+    let nextWbBackendPage = wbBackendPage
 
-    let currentOzonHasMore = ozonHasMore
-    let currentWbHasMore = wbHasMore
+    const ozonNeedLoad = nextOzonItems.length < needed
+    const wbNeedLoad = nextWbItems.length < needed
 
-    while (nextOzonItems.length < needed && currentOzonHasMore) {
-      const fetched = await fetchMarketplaceNextPage(q, 'ozon', currentOzonBackendPage + 1)
-      if (!fetched.length) {
-        currentOzonHasMore = false
-        break
+    if (ozonNeedLoad) {
+      const ozonResult = await loadMarketplaceUntilEnough(
+        q,
+        'ozon',
+        nextOzonItems,
+        nextOzonBackendPage,
+        needed
+      )
+      nextOzonItems = ozonResult.items
+      nextOzonBackendPage = ozonResult.backendPage
+      setOzonItems(nextOzonItems)
+      setOzonBackendPage(nextOzonBackendPage)
+      if (nextOzonItems.length < needed) {
+        setOzonHasMore(false)
       }
-      currentOzonBackendPage += 1
-      nextOzonItems = uniqueMerge(nextOzonItems, fetched)
     }
 
-    while (nextWbItems.length < needed && currentWbHasMore) {
-      const fetched = await fetchMarketplaceNextPage(q, 'wb', currentWbBackendPage + 1)
-      if (!fetched.length) {
-        currentWbHasMore = false
-        break
+    if (wbNeedLoad) {
+      const wbResult = await loadMarketplaceUntilEnough(
+        q,
+        'wb',
+        nextWbItems,
+        nextWbBackendPage,
+        needed
+      )
+      nextWbItems = wbResult.items
+      nextWbBackendPage = wbResult.backendPage
+      setWbItems(nextWbItems)
+      setWbBackendPage(nextWbBackendPage)
+      if (nextWbItems.length < needed) {
+        setWbHasMore(false)
       }
-      currentWbBackendPage += 1
-      nextWbItems = uniqueMerge(nextWbItems, fetched)
     }
 
-    return { nextOzonItems, nextWbItems }
+    return {
+      nextOzonItems,
+      nextWbItems,
+    }
   }
 
   async function goToPage(nextPage: number) {
@@ -261,7 +281,7 @@ export default function SearchPage() {
         nextPageData.wbSlice.length === PER_MARKETPLACE
 
       if (!hasFullPage) {
-        setError('Достигнута последняя полная страница. Новая страница не может быть сформирована, попробуйте повторить позже.')
+        setError('Не удалось догрузить достаточно товаров для полной страницы. Повторите попытку позже.')
         return
       }
 
@@ -282,10 +302,12 @@ export default function SearchPage() {
   }, [ozonItems.length, wbItems.length])
 
   useEffect(() => {
-    if (page > totalPages) {
+    if (page > totalPages && totalPages > 0) {
       setPage(totalPages)
+      const fixedPage = buildVisiblePage(ozonItems, wbItems, totalPages)
+      setResults(fixedPage.items)
     }
-  }, [page, totalPages])
+  }, [page, totalPages, ozonItems, wbItems])
 
   useEffect(() => {
     const q = searchParams.get('q') ?? ''
