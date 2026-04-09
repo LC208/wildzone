@@ -1,3 +1,6 @@
+include .env
+export
+
 .PHONY: build up down logs migrate superuser shell
 
 build:
@@ -28,3 +31,6 @@ frontend-dev:
 	cd frontend && npm run dev
 
 dev: build up logs
+
+db:
+	docker compose exec db psql -U $(POSTGRES_USER) -d $(POSTGRES_DB)

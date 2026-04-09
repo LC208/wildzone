@@ -241,7 +241,7 @@ class SavedProductSerializer(serializers.ModelSerializer):
 class SaveProductInputSerializer(serializers.Serializer):
     """Входные данные для POST /api/v1/favourites/."""
 
-    marketplace = serializers.ChoiceField(choices=["wildberries", "ozon"])
+    marketplace = serializers.ChoiceField(choices=["wb", "ozon"])
     external_id = serializers.CharField(max_length=64)
     article = serializers.CharField(max_length=128, allow_blank=True, default="")
     title = serializers.CharField(max_length=512)

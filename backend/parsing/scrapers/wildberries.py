@@ -41,7 +41,8 @@ _DEFAULT_SORT = "popular"
 
 
 class WildberriesScraper(BaseScraper):
-    marketplace = "wildberries"
+    marketplace = "wb"
+    ipp = 100
 
     SEARCH_URL = "https://search.wb.ru/exactmatch/ru/common/v18/search"
     CDN_URL = "https://cdn.wbbasket.ru/api/v3/upstreams"
@@ -69,6 +70,7 @@ class WildberriesScraper(BaseScraper):
         route_map = self._get_route_map()
 
         results: list[ProductData] = []
+        logger.warning(len(products))
         for p in products:
             try:
                 nm_id = p["id"]
@@ -116,7 +118,7 @@ class WildberriesScraper(BaseScraper):
             "query": query,
             "resultset": "catalog",
             "sort": native_sort,
-            "spp": 0,
+            "spp": 30,
         }
 
         logger.debug("[WB] dest=%d, page=%d, sort=%s, query=%r", dest, page, native_sort, query)

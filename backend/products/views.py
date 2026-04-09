@@ -20,6 +20,7 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.throttling import ScopedRateThrottle
 
 from parsing.service import run_search
 
@@ -39,6 +40,8 @@ class SearchView(APIView):
     Выполняет поиск на маркетплейсах, применяет фильтры и сортировку в памяти.
     В БД ничего не сохраняется.
     """
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'parse'
 
     @extend_schema(
         request=SearchRequestSerializer,

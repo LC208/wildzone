@@ -29,6 +29,7 @@ SCRAPERS = {
     "ozon": OzonScraper,
 }
 
+ITEM_PER_SCRAPPER = 4
 
 async def _run_search_async(
     query: str,
@@ -89,8 +90,7 @@ def run_search(
     if marketplaces is None:
         marketplaces = list(SCRAPERS.keys())
 
-    # Разрешаем dest
-    effective_dest: int
+    # Определяем dest
     if dest is not None:
         effective_dest = dest
     elif latitude is not None and longitude is not None:
@@ -100,20 +100,13 @@ def run_search(
 
     logger.debug("[Service] dest=%d, marketplaces=%s", effective_dest, marketplaces)
 
+    coro = _run_search_async(query, marketplaces, page, sorting, effective_dest)
+
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(
-                    asyncio.run,
-                    _run_search_async(query, marketplaces, page, sorting, effective_dest),
-                )
-                return future.result()
-        else:
-            return loop.run_until_complete(
-                _run_search_async(query, marketplaces, page, sorting, effective_dest)
-            )
+        loop = asyncio.get_running_loop()
+        # Если уже есть running loop, запускаем через run_coroutine_threadsafe
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+        return future.result()
     except RuntimeError:
-        return asyncio.run(
-            _run_search_async(query, marketplaces, page, sorting, effective_dest)
-        )
+        # Нет текущего loop — можно использовать asyncio.run
+        return asyncio.run(coro)

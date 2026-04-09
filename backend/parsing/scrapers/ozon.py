@@ -46,7 +46,8 @@ _DEFAULT_SORT = "score"
 
 class OzonScraper(BaseScraper):
     marketplace = "ozon"
-
+    ipp = 12 
+    
     def _search(
         self,
         query: str,
@@ -178,8 +179,8 @@ def _parse_item(item: dict, marketplace: str) -> ProductData:
         reviews_count=reviews_count,
         url=url,
         image_url=image_url,
-        delivery_days=_parse_delivery(delivery_str),
-        in_stock=_is_in_stock(item),
+        # delivery_days=_parse_delivery(delivery_str),
+        in_stock=True if price else False
     )
 
 

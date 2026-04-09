@@ -8,6 +8,7 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+AUTH_USER_MODEL = "accounts.CustomUser"
 PARSING_REQUEST_DELAY = 1.0
 
 PARSING_RETRY_ATTEMPTS = 3
@@ -120,6 +121,10 @@ REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": [
         "django_filters.rest_framework.DjangoFilterBackend",
     ],
+    'DEFAULT_THROTTLE_CLASSES': [],
+    'DEFAULT_THROTTLE_RATES': {
+        'parse': '20/minute',
+    },
 }
 
 SIMPLE_JWT = {

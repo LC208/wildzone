@@ -89,6 +89,7 @@ class ProductData:
 
 class BaseScraper(ABC):
     marketplace: str = ""
+    ipp: int = 4 
     _semaphore: Optional[asyncio.Semaphore] = None
 
     def __init__(self) -> None:
