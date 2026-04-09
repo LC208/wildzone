@@ -73,6 +73,19 @@ export default function SearchPage() {
     return Array.isArray(data) ? data : data.results ?? []
   }
 
+  function normalizeMarketplace(value: unknown) {
+    return String(value ?? '').trim().toLowerCase()
+  }
+
+  function isOzon(product: ProductData) {
+    return normalizeMarketplace(product.marketplace) === 'ozon'
+  }
+
+  function isWb(product: ProductData) {
+    const mp = normalizeMarketplace(product.marketplace)
+    return mp === 'wb' || mp === 'wildberries'
+  }
+
   function getBaseParams(q: string): SearchParams {
     const [sort_by, sort_order] = sort
       ? (() => {
@@ -96,15 +109,15 @@ export default function SearchPage() {
   function uniqueMerge(prev: ProductData[], next: ProductData[]) {
     const map = new Map<string, ProductData>()
     for (const item of [...prev, ...next]) {
-      map.set(`${item.marketplace}:${item.external_id}`, item)
+      map.set(`${normalizeMarketplace(item.marketplace)}:${item.external_id}`, item)
     }
     return Array.from(map.values())
   }
 
   function splitByMarketplace(items: ProductData[]) {
     return {
-      ozon: items.filter((p) => p.marketplace === 'ozon'),
-      wb: items.filter((p) => p.marketplace === 'wb'),
+      ozon: items.filter(isOzon),
+      wb: items.filter(isWb),
     }
   }
 
@@ -163,7 +176,10 @@ export default function SearchPage() {
 
     const data = await searchProducts(params)
     const items = parseItems(data)
-    const filtered = items.filter((p) => p.marketplace === marketplace)
+
+    const filtered = marketplace === 'ozon'
+      ? items.filter(isOzon)
+      : items.filter(isWb)
 
     if (marketplace === 'ozon') {
       setOzonItems((prev) => uniqueMerge(prev, filtered))
@@ -214,8 +230,7 @@ export default function SearchPage() {
   }
 
   async function goToPage(nextPage: number) {
-    if (!query.trim()) return
-    if (nextPage < 1) return
+    if (!query.trim() || nextPage < 1) return
 
     setLoading(true)
     setError('')
@@ -224,10 +239,7 @@ export default function SearchPage() {
       const { nextOzonItems, nextWbItems } = await ensureEnoughItemsForPage(query.trim(), nextPage)
       const nextResults = buildVisiblePage(nextOzonItems, nextWbItems, nextPage)
 
-      if (nextResults.length === 0 && nextPage > 1) {
-        setLoading(false)
-        return
-      }
+      if (nextResults.length === 0 && nextPage > 1) return
 
       setResults(nextResults)
       setPage(nextPage)
@@ -247,12 +259,8 @@ export default function SearchPage() {
   const canGoNext = useMemo(() => {
     const nextPage = page + 1
     const needed = nextPage * PER_MARKETPLACE
-
-    const enoughLocal =
-      ozonItems.length >= needed || wbItems.length >= needed
-
+    const enoughLocal = ozonItems.length >= needed || wbItems.length >= needed
     const canFetchMore = ozonHasMore || wbHasMore
-
     return enoughLocal || canFetchMore
   }, [page, ozonItems.length, wbItems.length, ozonHasMore, wbHasMore])
 
@@ -275,7 +283,7 @@ export default function SearchPage() {
   }
 
   function handleSaved(product: ProductData) {
-    setSavedKeys((prev) => new Set(prev).add(`${product.marketplace}:${product.external_id}`))
+    setSavedKeys((prev) => new Set(prev).add(`${normalizeMarketplace(product.marketplace)}:${product.external_id}`))
   }
 
   return (
@@ -419,9 +427,9 @@ export default function SearchPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-stretch">
         {results.map((p) => (
           <ProductCard
-            key={`${p.marketplace}-${p.external_id}`}
+            key={`${normalizeMarketplace(p.marketplace)}-${p.external_id}`}
             product={p}
-            isSaved={savedKeys.has(`${p.marketplace}:${p.external_id}`)}
+            isSaved={savedKeys.has(`${normalizeMarketplace(p.marketplace)}:${p.external_id}`)}
             onSaved={handleSaved}
           />
         ))}
