@@ -21,8 +21,8 @@ const SORT_OPTIONS = [
 ]
 
 const POPULAR = ['кроссовки', 'наушники', 'рюкзак', 'смартфон', 'пауэрбанк', 'куртка']
+const PER_MARKETPLACE = 4
 const PAGE_SIZE = 100
-const PAGE_CARDS = 8
 
 export default function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -31,6 +31,7 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set())
+
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [minRating, setMinRating] = useState('')
@@ -38,8 +39,17 @@ export default function SearchPage() {
   const [inStock, setInStock] = useState(false)
   const [sort, setSort] = useState('')
   const [showSuggestions, setShowSuggestions] = useState(false)
+
   const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
+
+  const [ozonItems, setOzonItems] = useState<ProductData[]>([])
+  const [wbItems, setWbItems] = useState<ProductData[]>([])
+
+  const [ozonBackendPage, setOzonBackendPage] = useState(1)
+  const [wbBackendPage, setWbBackendPage] = useState(1)
+
+  const [ozonHasMore, setOzonHasMore] = useState(true)
+  const [wbHasMore, setWbHasMore] = useState(true)
 
   useEffect(() => {
     if (!getToken()) return
@@ -60,57 +70,119 @@ export default function SearchPage() {
       .slice(0, 8)
   }, [query])
 
-  const normalizeResults = (items: ProductData[]) => {
-    const ozon = items.filter((p) => p.marketplace === 'ozon').slice(0, 4)
-    const wb = items.filter((p) => p.marketplace === 'wb').slice(0, 4)
+  function getBaseParams(q: string): SearchParams {
+    const [sort_by, sort_order] = sort
+      ? (() => {
+          const parts = sort.split('_')
+          const order = parts.pop()!
+          return [parts.join('_'), order]
+        })()
+      : ['', '']
 
-    const pageItems: ProductData[] = [...ozon, ...wb]
-
-    if (pageItems.length < PAGE_CARDS) {
-      const used = new Set(pageItems.map((p) => `${p.marketplace}:${p.external_id}`))
-      const rest = items.filter((p) => !used.has(`${p.marketplace}:${p.external_id}`))
-      pageItems.push(...rest.slice(0, PAGE_CARDS - pageItems.length))
+    return {
+      query: q,
+      max_results: PAGE_SIZE,
+      ...(minPrice ? { min_price: Number(minPrice) } : {}),
+      ...(maxPrice ? { max_price: Number(maxPrice) } : {}),
+      ...(minRating ? { min_rating: Number(minRating) } : {}),
+      ...(maxDelivery ? { max_delivery: Number(maxDelivery) } : {}),
+      ...(inStock ? { in_stock: true } : {}),
+      ...(sort_by ? { sort_by, sort_order } : {}),
     }
-
-    return pageItems.slice(0, PAGE_CARDS)
   }
 
-  const fetchSearch = async (q: string, nextPage = 1) => {
+  function parseItems(data: SearchResponse | ProductData[]) {
+    return Array.isArray(data) ? data : data.results ?? []
+  }
+
+  function uniqueMerge(prev: ProductData[], next: ProductData[]) {
+    const map = new Map<string, ProductData>()
+    for (const item of [...prev, ...next]) {
+      map.set(`${item.marketplace}:${item.external_id}`, item)
+    }
+    return Array.from(map.values())
+  }
+
+  function buildVisiblePage(ozon: ProductData[], wb: ProductData[], currentPage: number) {
+    const start = (currentPage - 1) * PER_MARKETPLACE
+    const ozonSlice = ozon.slice(start, start + PER_MARKETPLACE)
+    const wbSlice = wb.slice(start, start + PER_MARKETPLACE)
+    return [...ozonSlice, ...wbSlice]
+  }
+
+  async function fetchMarketplacePage(
+    q: string,
+    marketplace: 'ozon' | 'wb',
+    backendPage: number
+  ) {
+    const params: SearchParams = {
+      ...getBaseParams(q),
+      marketplaces: [marketplace],
+      page: backendPage,
+      page_size: PAGE_SIZE,
+    }
+
+    const data = await searchProducts(params)
+    const items = parseItems(data).filter((p) => p.marketplace === marketplace)
+
+    if (marketplace === 'ozon') {
+      setOzonItems((prev) => uniqueMerge(prev, items))
+      setOzonHasMore(items.length > 0)
+      if (items.length > 0) setOzonBackendPage(backendPage)
+    } else {
+      setWbItems((prev) => uniqueMerge(prev, items))
+      setWbHasMore(items.length > 0)
+      if (items.length > 0) setWbBackendPage(backendPage)
+    }
+
+    return items
+  }
+
+  async function ensurePageData(q: string, nextPage: number, currentOzon: ProductData[], currentWb: ProductData[]) {
+    const needed = nextPage * PER_MARKETPLACE
+
+    let ozonPool = currentOzon
+    let wbPool = currentWb
+
+    if (ozonPool.length < needed && ozonHasMore) {
+      const next = await fetchMarketplacePage(q, 'ozon', ozonBackendPage + 1)
+      ozonPool = uniqueMerge(ozonPool, next)
+    }
+
+    if (wbPool.length < needed && wbHasMore) {
+      const next = await fetchMarketplacePage(q, 'wb', wbBackendPage + 1)
+      wbPool = uniqueMerge(wbPool, next)
+    }
+
+    return { ozonPool, wbPool }
+  }
+
+  async function fetchInitialSearch(q: string) {
     if (!q.trim()) return
+
     setLoading(true)
     setError('')
     try {
-      const [sort_by, sort_order] = sort
-        ? (() => {
-            const parts = sort.split('_')
-            const order = parts.pop()!
-            return [parts.join('_'), order]
-          })()
-        : ['', '']
-
       const params: SearchParams = {
-        query: q,
-        max_results: PAGE_SIZE,
-        page: nextPage,
-        page_size: PAGE_CARDS,
-        ...(minPrice ? { min_price: Number(minPrice) } : {}),
-        ...(maxPrice ? { max_price: Number(maxPrice) } : {}),
-        ...(minRating ? { min_rating: Number(minRating) } : {}),
-        ...(maxDelivery ? { max_delivery: Number(maxDelivery) } : {}),
-        ...(inStock ? { in_stock: true } : {}),
-        ...(sort_by ? { sort_by, sort_order } : {}),
+        ...getBaseParams(q),
+        page: 1,
+        page_size: PAGE_SIZE,
       }
 
       const data = await searchProducts(params)
-      const payload = data as SearchResponse | ProductData[]
-      const items = Array.isArray(payload) ? payload : payload.results ?? []
+      const items = parseItems(data)
 
-      const ozonCount = items.filter((p) => p.marketplace === 'ozon').length
-      const wbCount = items.filter((p) => p.marketplace === 'wb').length
+      const ozon = items.filter((p) => p.marketplace === 'ozon')
+      const wb = items.filter((p) => p.marketplace === 'wb')
 
-      setResults(normalizeResults(items))
-      setTotalPages(Math.max(1, Math.ceil(Math.max(ozonCount, wbCount) / 4)))
-      setPage(nextPage)
+      setOzonItems(ozon)
+      setWbItems(wb)
+      setOzonBackendPage(1)
+      setWbBackendPage(1)
+      setOzonHasMore(ozon.length > 0)
+      setWbHasMore(wb.length > 0)
+      setPage(1)
+      setResults(buildVisiblePage(ozon, wb, 1))
       saveSearchHistory(q)
     } catch {
       setError('Ошибка при поиске. Проверьте, что backend запущен.')
@@ -119,32 +191,54 @@ export default function SearchPage() {
     }
   }
 
+  async function goToPage(nextPage: number) {
+    if (!query.trim()) return
+
+    setLoading(true)
+    setError('')
+
+    try {
+      const { ozonPool, wbPool } = await ensurePageData(query.trim(), nextPage, ozonItems, wbItems)
+      setResults(buildVisiblePage(ozonPool, wbPool, nextPage))
+      setPage(nextPage)
+    } catch {
+      setError('Не удалось загрузить следующую страницу')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const totalPages = useMemo(() => {
+    const localPages = Math.max(
+      Math.ceil(ozonItems.length / PER_MARKETPLACE),
+      Math.ceil(wbItems.length / PER_MARKETPLACE),
+      1
+    )
+
+    if (ozonHasMore || wbHasMore) return Math.max(localPages, page + 1)
+    return localPages
+  }, [ozonItems.length, wbItems.length, ozonHasMore, wbHasMore, page])
+
   useEffect(() => {
     const q = searchParams.get('q') ?? ''
     setQuery(q)
-    if (q) fetchSearch(q, 1)
+    if (q) fetchInitialSearch(q)
   }, [searchParams])
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const q = query.trim()
-    if (q) {
-      setSearchParams({ q })
-      fetchSearch(q, 1)
-    }
+    if (!q) return
+    setSearchParams({ q })
+    fetchInitialSearch(q)
   }
 
   function applyFilters() {
-    if (query.trim()) fetchSearch(query.trim(), 1)
+    if (query.trim()) fetchInitialSearch(query.trim())
   }
 
   function handleSaved(product: ProductData) {
     setSavedKeys((prev) => new Set(prev).add(`${product.marketplace}:${product.external_id}`))
-  }
-
-  function goToPage(nextPage: number) {
-    if (!query.trim()) return
-    fetchSearch(query.trim(), nextPage)
   }
 
   return (
@@ -172,7 +266,7 @@ export default function SearchPage() {
                       onClick={() => {
                         setQuery(item)
                         setSearchParams({ q: item })
-                        fetchSearch(item, 1)
+                        fetchInitialSearch(item)
                       }}
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
                     >
@@ -199,7 +293,7 @@ export default function SearchPage() {
               onClick={() => {
                 setQuery(item)
                 setSearchParams({ q: item })
-                fetchSearch(item, 1)
+                fetchInitialSearch(item)
               }}
               className="px-3 py-1.5 text-sm rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition"
             >
@@ -269,6 +363,7 @@ export default function SearchPage() {
         </select>
 
         <button
+          type="button"
           onClick={applyFilters}
           className="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg text-sm hover:bg-gray-200 transition"
         >
@@ -293,7 +388,7 @@ export default function SearchPage() {
         ))}
       </div>
 
-      {query.trim() && totalPages > 1 && (
+      {query.trim() && results.length > 0 && (
         <div className="flex items-center justify-center gap-2 mt-8">
           <button
             type="button"
@@ -303,10 +398,14 @@ export default function SearchPage() {
           >
             Назад
           </button>
-          <span className="text-sm text-gray-500">Страница {page} из {totalPages}</span>
+          <span className="text-sm text-gray-500">Страница {page}</span>
           <button
             type="button"
-            disabled={page >= totalPages || loading}
+            disabled={
+              loading ||
+              (!ozonHasMore && ozonItems.length < (page + 1) * PER_MARKETPLACE) &&
+              (!wbHasMore && wbItems.length < (page + 1) * PER_MARKETPLACE)
+            }
             onClick={() => goToPage(page + 1)}
             className="px-4 py-2 rounded-lg border border-gray-300 bg-white disabled:opacity-50"
           >
