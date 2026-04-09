@@ -134,7 +134,7 @@ class BaseScraper(ABC):
         async with self.__class__._semaphore:
             loop = asyncio.get_event_loop()
 
-            async for attempt in AsyncRetrying(stop=stop_after_attempt(3), wait=wait_fixed(1)):
+            async for attempt in AsyncRetrying(stop=stop_after_attempt(3), wait=wait_fixed(5)):
                 with attempt:
                     result = await loop.run_in_executor(
                         None,
