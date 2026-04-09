@@ -22,7 +22,7 @@ const SORT_OPTIONS = [
 
 const POPULAR = ['кроссовки', 'наушники', 'рюкзак', 'смартфон', 'пауэрбанк', 'куртка']
 const PAGE_SIZE = 100
-const CARD_COUNT = 8
+const PAGE_CARDS = 8
 
 export default function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -38,6 +38,8 @@ export default function SearchPage() {
   const [inStock, setInStock] = useState(false)
   const [sort, setSort] = useState('')
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
 
   useEffect(() => {
     if (!getToken()) return
@@ -58,29 +60,25 @@ export default function SearchPage() {
       .slice(0, 8)
   }, [query])
 
-  const buildPage = (items: ProductData[], ozonNeed = 4, wbNeed = 4) => {
-    const ozon = items.filter((p) => p.marketplace === 'ozon')
-    const wb = items.filter((p) => p.marketplace === 'wb')
+  const normalizeResults = (items: ProductData[]) => {
+    const ozon = items.filter((p) => p.marketplace === 'ozon').slice(0, 4)
+    const wb = items.filter((p) => p.marketplace === 'wb').slice(0, 4)
 
-    const page: ProductData[] = []
+    const pageItems: ProductData[] = [...ozon, ...wb]
 
-    page.push(...ozon.slice(0, ozonNeed))
-    page.push(...wb.slice(0, wbNeed))
-
-    if (page.length < CARD_COUNT) {
-      const used = new Set(page.map((p) => `${p.marketplace}:${p.external_id}`))
+    if (pageItems.length < PAGE_CARDS) {
+      const used = new Set(pageItems.map((p) => `${p.marketplace}:${p.external_id}`))
       const rest = items.filter((p) => !used.has(`${p.marketplace}:${p.external_id}`))
-      page.push(...rest.slice(0, CARD_COUNT - page.length))
+      pageItems.push(...rest.slice(0, PAGE_CARDS - pageItems.length))
     }
 
-    return page.slice(0, CARD_COUNT)
+    return pageItems.slice(0, PAGE_CARDS)
   }
 
-  const fetchSearch = async (q: string) => {
+  const fetchSearch = async (q: string, nextPage = 1) => {
     if (!q.trim()) return
     setLoading(true)
     setError('')
-
     try {
       const [sort_by, sort_order] = sort
         ? (() => {
@@ -93,6 +91,8 @@ export default function SearchPage() {
       const params: SearchParams = {
         query: q,
         max_results: PAGE_SIZE,
+        page: nextPage,
+        page_size: PAGE_CARDS,
         ...(minPrice ? { min_price: Number(minPrice) } : {}),
         ...(maxPrice ? { max_price: Number(maxPrice) } : {}),
         ...(minRating ? { min_rating: Number(minRating) } : {}),
@@ -105,21 +105,12 @@ export default function SearchPage() {
       const payload = data as SearchResponse | ProductData[]
       const items = Array.isArray(payload) ? payload : payload.results ?? []
 
-      const ozon = items.filter((p) => p.marketplace === 'ozon')
-      const wb = items.filter((p) => p.marketplace === 'wb')
+      const ozonCount = items.filter((p) => p.marketplace === 'ozon').length
+      const wbCount = items.filter((p) => p.marketplace === 'wb').length
 
-      let pageItems: ProductData[] = [
-        ...ozon.slice(0, 4),
-        ...wb.slice(0, 4),
-      ]
-
-      if (pageItems.length < CARD_COUNT) {
-        const used = new Set(pageItems.map((p) => `${p.marketplace}:${p.external_id}`))
-        const rest = items.filter((p) => !used.has(`${p.marketplace}:${p.external_id}`))
-        pageItems = [...pageItems, ...rest.slice(0, CARD_COUNT - pageItems.length)]
-      }
-
-      setResults(pageItems.slice(0, CARD_COUNT))
+      setResults(normalizeResults(items))
+      setTotalPages(Math.max(1, Math.ceil(Math.max(ozonCount, wbCount) / 4)))
+      setPage(nextPage)
       saveSearchHistory(q)
     } catch {
       setError('Ошибка при поиске. Проверьте, что backend запущен.')
@@ -131,7 +122,7 @@ export default function SearchPage() {
   useEffect(() => {
     const q = searchParams.get('q') ?? ''
     setQuery(q)
-    if (q) fetchSearch(q)
+    if (q) fetchSearch(q, 1)
   }, [searchParams])
 
   function handleSubmit(e: React.FormEvent) {
@@ -139,16 +130,21 @@ export default function SearchPage() {
     const q = query.trim()
     if (q) {
       setSearchParams({ q })
-      fetchSearch(q)
+      fetchSearch(q, 1)
     }
   }
 
   function applyFilters() {
-    if (query.trim()) fetchSearch(query.trim())
+    if (query.trim()) fetchSearch(query.trim(), 1)
   }
 
   function handleSaved(product: ProductData) {
     setSavedKeys((prev) => new Set(prev).add(`${product.marketplace}:${product.external_id}`))
+  }
+
+  function goToPage(nextPage: number) {
+    if (!query.trim()) return
+    fetchSearch(query.trim(), nextPage)
   }
 
   return (
@@ -176,7 +172,7 @@ export default function SearchPage() {
                       onClick={() => {
                         setQuery(item)
                         setSearchParams({ q: item })
-                        fetchSearch(item)
+                        fetchSearch(item, 1)
                       }}
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
                     >
@@ -203,7 +199,7 @@ export default function SearchPage() {
               onClick={() => {
                 setQuery(item)
                 setSearchParams({ q: item })
-                fetchSearch(item)
+                fetchSearch(item, 1)
               }}
               className="px-3 py-1.5 text-sm rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition"
             >
@@ -296,6 +292,28 @@ export default function SearchPage() {
           />
         ))}
       </div>
+
+      {query.trim() && totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-8">
+          <button
+            type="button"
+            disabled={page <= 1 || loading}
+            onClick={() => goToPage(page - 1)}
+            className="px-4 py-2 rounded-lg border border-gray-300 bg-white disabled:opacity-50"
+          >
+            Назад
+          </button>
+          <span className="text-sm text-gray-500">Страница {page} из {totalPages}</span>
+          <button
+            type="button"
+            disabled={page >= totalPages || loading}
+            onClick={() => goToPage(page + 1)}
+            className="px-4 py-2 rounded-lg border border-gray-300 bg-white disabled:opacity-50"
+          >
+            Далее
+          </button>
+        </div>
+      )}
     </div>
   )
 }
