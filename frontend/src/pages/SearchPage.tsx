@@ -74,7 +74,7 @@ export default function SearchPage() {
 
       const params: SearchParams = {
         query: q,
-        max_results: 100,
+        max_results: 8,
         page: nextPage,
         page_size: pageSize,
         ...(minPrice ? { min_price: Number(minPrice) } : {}),
