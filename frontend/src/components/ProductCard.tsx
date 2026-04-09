@@ -3,7 +3,7 @@ import { ProductData, addFavourite } from '../api/products'
 import { getToken } from '../api/auth'
 
 const MP_LABELS: Record<string, { label: string; color: string }> = {
-  wb: { label: 'WB', color: 'bg-purple-600' },
+  wildberries: { label: 'Wildberries', color: 'bg-purple-600' },
   ozon: { label: 'Ozon', color: 'bg-blue-500' },
 }
 
