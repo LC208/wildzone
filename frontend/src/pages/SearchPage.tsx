@@ -235,11 +235,6 @@ export default function SearchPage() {
   async function goToPage(nextPage: number) {
     if (!query.trim() || nextPage < 1) return
 
-    if (nextPage > totalPages) {
-      setError('Достигнута последняя доступная страница для маркетплейса с меньшим количеством товаров.')
-      return
-    }
-
     setLoading(true)
     setError('')
 
@@ -255,7 +250,7 @@ export default function SearchPage() {
       const nextResults = buildVisiblePage(nextOzonItems, nextWbItems, nextPage)
 
       if (nextResults.length === 0 && nextPage > 1) {
-        setError('Данные для следующей страницы не получены. Повторите попытку.')
+        setError('Новые товары не получены. Повторите попытку.')
         return
       }
 
@@ -472,10 +467,6 @@ export default function SearchPage() {
             type="button"
             onClick={() => {
               if (loading) return
-              if (page >= totalPages) {
-                setError('Достигнута последняя доступная страница для маркетплейса с меньшим количеством товаров.')
-                return
-              }
               goToPage(page + 1)
             }}
             className="px-4 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
