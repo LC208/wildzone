@@ -35,9 +35,6 @@ export default function SearchPage() {
   const [maxDelivery, setMaxDelivery] = useState('')
   const [inStock, setInStock] = useState(false)
   const [sort, setSort] = useState('')
-  const [page, setPage] = useState(1)
-  const [pageSize] = useState(12)
-  const [totalPages, setTotalPages] = useState(1)
   const [showSuggestions, setShowSuggestions] = useState(false)
 
   useEffect(() => {
@@ -59,7 +56,13 @@ export default function SearchPage() {
       .slice(0, 8)
   }, [query])
 
-  const doSearch = async (q: string, nextPage = 1) => {
+  const normalizeResults = (items: ProductData[]) => {
+    const ozon = items.filter((p) => p.marketplace === 'ozon').slice(0, 4)
+    const wb = items.filter((p) => p.marketplace === 'wb').slice(0, 4)
+    return [...ozon, ...wb].slice(0, 8)
+  }
+
+  const doSearch = async (q: string) => {
     if (!q.trim()) return
     setLoading(true)
     setError('')
@@ -74,9 +77,7 @@ export default function SearchPage() {
 
       const params: SearchParams = {
         query: q,
-        max_results: 8,
-        page: nextPage,
-        page_size: pageSize,
+        max_results: 100,
         ...(minPrice ? { min_price: Number(minPrice) } : {}),
         ...(maxPrice ? { max_price: Number(maxPrice) } : {}),
         ...(minRating ? { min_rating: Number(minRating) } : {}),
@@ -89,9 +90,7 @@ export default function SearchPage() {
       const payload = data as SearchResponse | ProductData[]
       const items = Array.isArray(payload) ? payload : payload.results ?? []
 
-      setResults(items)
-      setTotalPages(Array.isArray(payload) ? Math.max(1, Math.ceil(items.length / pageSize)) : (payload.total_pages ?? 1))
-      setPage(nextPage)
+      setResults(normalizeResults(items))
       saveSearchHistory(q)
     } catch {
       setError('Ошибка при поиске. Проверьте, что backend запущен.')
@@ -103,7 +102,7 @@ export default function SearchPage() {
   useEffect(() => {
     const q = searchParams.get('q') ?? ''
     setQuery(q)
-    if (q) doSearch(q, 1)
+    if (q) doSearch(q)
   }, [searchParams])
 
   function handleSubmit(e: React.FormEvent) {
@@ -111,12 +110,12 @@ export default function SearchPage() {
     const q = query.trim()
     if (q) {
       setSearchParams({ q })
-      doSearch(q, 1)
+      doSearch(q)
     }
   }
 
   function applyFilters() {
-    if (query.trim()) doSearch(query.trim(), 1)
+    if (query.trim()) doSearch(query.trim())
   }
 
   function handleSaved(product: ProductData) {
@@ -148,7 +147,7 @@ export default function SearchPage() {
                       onClick={() => {
                         setQuery(item)
                         setSearchParams({ q: item })
-                        doSearch(item, 1)
+                        doSearch(item)
                       }}
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
                     >
@@ -158,7 +157,10 @@ export default function SearchPage() {
                 </div>
               )}
             </div>
-            <button type="submit" className="bg-indigo-600 text-white px-5 py-2 rounded-xl text-sm hover:bg-indigo-700 transition">
+            <button
+              type="submit"
+              className="bg-indigo-600 text-white px-5 py-2 rounded-xl text-sm hover:bg-indigo-700 transition"
+            >
               Найти
             </button>
           </div>
@@ -172,7 +174,7 @@ export default function SearchPage() {
               onClick={() => {
                 setQuery(item)
                 setSearchParams({ q: item })
-                doSearch(item, 1)
+                doSearch(item)
               }}
               className="px-3 py-1.5 text-sm rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition"
             >
@@ -184,24 +186,67 @@ export default function SearchPage() {
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6 flex flex-wrap gap-3 items-end">
         <div className="flex gap-2 items-center">
-          <input type="number" placeholder="Цена от" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} className="w-24 border border-gray-300 rounded-lg px-2 py-1 text-sm" />
+          <input
+            type="number"
+            placeholder="Цена от"
+            value={minPrice}
+            onChange={(e) => setMinPrice(e.target.value)}
+            className="w-24 border border-gray-300 rounded-lg px-2 py-1 text-sm"
+          />
           <span className="text-gray-400">—</span>
-          <input type="number" placeholder="до" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} className="w-24 border border-gray-300 rounded-lg px-2 py-1 text-sm" />
+          <input
+            type="number"
+            placeholder="до"
+            value={maxPrice}
+            onChange={(e) => setMaxPrice(e.target.value)}
+            className="w-24 border border-gray-300 rounded-lg px-2 py-1 text-sm"
+          />
         </div>
 
-        <input type="number" step="0.1" min="0" max="5" placeholder="Рейтинг от" value={minRating} onChange={(e) => setMinRating(e.target.value)} className="w-28 border border-gray-300 rounded-lg px-2 py-1 text-sm" />
-        <input type="number" min="0" placeholder="Доставка макс (дн.)" value={maxDelivery} onChange={(e) => setMaxDelivery(e.target.value)} className="w-40 border border-gray-300 rounded-lg px-2 py-1 text-sm" />
+        <input
+          type="number"
+          step="0.1"
+          min="0"
+          max="5"
+          placeholder="Рейтинг от"
+          value={minRating}
+          onChange={(e) => setMinRating(e.target.value)}
+          className="w-28 border border-gray-300 rounded-lg px-2 py-1 text-sm"
+        />
+
+        <input
+          type="number"
+          min="0"
+          placeholder="Доставка макс (дн.)"
+          value={maxDelivery}
+          onChange={(e) => setMaxDelivery(e.target.value)}
+          className="w-40 border border-gray-300 rounded-lg px-2 py-1 text-sm"
+        />
 
         <label className="flex items-center gap-1 text-sm cursor-pointer select-none">
-          <input type="checkbox" checked={inStock} onChange={(e) => setInStock(e.target.checked)} className="accent-indigo-600" />
+          <input
+            type="checkbox"
+            checked={inStock}
+            onChange={(e) => setInStock(e.target.checked)}
+            className="accent-indigo-600"
+          />
           В наличии
         </label>
 
-        <select value={sort} onChange={(e) => setSort(e.target.value)} className="border border-gray-300 rounded-lg px-2 py-1 text-sm">
-          {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value)}
+          className="border border-gray-300 rounded-lg px-2 py-1 text-sm"
+        >
+          {SORT_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
         </select>
 
-        <button onClick={applyFilters} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg text-sm hover:bg-gray-200 transition">
+        <button
+          onClick={applyFilters}
+          className="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg text-sm hover:bg-gray-200 transition"
+        >
           Применить
         </button>
       </div>
@@ -212,7 +257,7 @@ export default function SearchPage() {
         <p className="text-center text-gray-400 py-10">Ничего не найдено</p>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 items-stretch">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-stretch">
         {results.map((p) => (
           <ProductCard
             key={`${p.marketplace}-${p.external_id}`}
@@ -222,28 +267,6 @@ export default function SearchPage() {
           />
         ))}
       </div>
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-8">
-          <button
-            type="button"
-            disabled={page <= 1 || loading}
-            onClick={() => doSearch(query.trim(), page - 1)}
-            className="px-4 py-2 rounded-lg border border-gray-300 bg-white disabled:opacity-50"
-          >
-            Назад
-          </button>
-          <span className="text-sm text-gray-500">Страница {page} из {totalPages}</span>
-          <button
-            type="button"
-            disabled={page >= totalPages || loading}
-            onClick={() => doSearch(query.trim(), page + 1)}
-            className="px-4 py-2 rounded-lg border border-gray-300 bg-white disabled:opacity-50"
-          >
-            Далее
-          </button>
-        </div>
-      )}
     </div>
   )
 }
