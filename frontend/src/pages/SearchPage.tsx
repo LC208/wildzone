@@ -125,7 +125,7 @@ export default function SearchPage() {
     const start = (currentPage - 1) * PER_MARKETPLACE
     const ozonSlice = ozon.slice(start, start + PER_MARKETPLACE)
     const wbSlice = wb.slice(start, start + PER_MARKETPLACE)
-    return [...ozonSlice, ...wbSlice]
+    return { ozonSlice, wbSlice, items: [...ozonSlice, ...wbSlice] }
   }
 
   async function fetchInitialSearch(q: string) {
@@ -154,7 +154,16 @@ export default function SearchPage() {
       setWbHasMore(wb.length > 0)
 
       setPage(1)
-      setResults(buildVisiblePage(ozon, wb, 1))
+
+      const firstPage = buildVisiblePage(ozon, wb, 1)
+
+      if (firstPage.ozonSlice.length < PER_MARKETPLACE || firstPage.wbSlice.length < PER_MARKETPLACE) {
+        setResults([])
+        setError('Недостаточно данных для формирования полной страницы 4 Ozon + 4 Wildberries.')
+      } else {
+        setResults(firstPage.items)
+      }
+
       saveSearchHistory(q)
     } catch {
       setError('Ошибка при поиске. Проверьте, что backend запущен.')
@@ -185,11 +194,15 @@ export default function SearchPage() {
       setOzonBackendPage(nextBackendPage)
       if (filtered.length > 0) {
         setOzonItems((prev) => uniqueMerge(prev, filtered))
+      } else {
+        setOzonHasMore(false)
       }
     } else {
       setWbBackendPage(nextBackendPage)
       if (filtered.length > 0) {
         setWbItems((prev) => uniqueMerge(prev, filtered))
+      } else {
+        setWbHasMore(false)
       }
     }
 
@@ -205,31 +218,30 @@ export default function SearchPage() {
     let currentOzonBackendPage = ozonBackendPage
     let currentWbBackendPage = wbBackendPage
 
-    let failedToLoad = false
+    let currentOzonHasMore = ozonHasMore
+    let currentWbHasMore = wbHasMore
 
-    if (nextOzonItems.length < needed && ozonHasMore) {
+    while (nextOzonItems.length < needed && currentOzonHasMore) {
       const fetched = await fetchMarketplaceNextPage(q, 'ozon', currentOzonBackendPage + 1)
       if (!fetched.length) {
-        failedToLoad = true
-        setOzonHasMore(false)
-      } else {
-        currentOzonBackendPage += 1
-        nextOzonItems = uniqueMerge(nextOzonItems, fetched)
+        currentOzonHasMore = false
+        break
       }
+      currentOzonBackendPage += 1
+      nextOzonItems = uniqueMerge(nextOzonItems, fetched)
     }
 
-    if (nextWbItems.length < needed && wbHasMore) {
+    while (nextWbItems.length < needed && currentWbHasMore) {
       const fetched = await fetchMarketplaceNextPage(q, 'wb', currentWbBackendPage + 1)
       if (!fetched.length) {
-        failedToLoad = true
-        setWbHasMore(false)
-      } else {
-        currentWbBackendPage += 1
-        nextWbItems = uniqueMerge(nextWbItems, fetched)
+        currentWbHasMore = false
+        break
       }
+      currentWbBackendPage += 1
+      nextWbItems = uniqueMerge(nextWbItems, fetched)
     }
 
-    return { nextOzonItems, nextWbItems, failedToLoad }
+    return { nextOzonItems, nextWbItems }
   }
 
   async function goToPage(nextPage: number) {
@@ -239,22 +251,21 @@ export default function SearchPage() {
     setError('')
 
     try {
-      const { nextOzonItems, nextWbItems, failedToLoad } =
+      const { nextOzonItems, nextWbItems } =
         await ensureEnoughItemsForPage(query.trim(), nextPage)
 
-      if (failedToLoad) {
-        setError('Не удалось загрузить следующую страницу. Повторите попытку.')
+      const nextPageData = buildVisiblePage(nextOzonItems, nextWbItems, nextPage)
+
+      const hasFullPage =
+        nextPageData.ozonSlice.length === PER_MARKETPLACE &&
+        nextPageData.wbSlice.length === PER_MARKETPLACE
+
+      if (!hasFullPage) {
+        setError('Достигнута последняя полная страница. Новая страница не может быть сформирована, попробуйте повторить позже.')
         return
       }
 
-      const nextResults = buildVisiblePage(nextOzonItems, nextWbItems, nextPage)
-
-      if (nextResults.length === 0 && nextPage > 1) {
-        setError('Новые товары не получены. Повторите попытку.')
-        return
-      }
-
-      setResults(nextResults)
+      setResults(nextPageData.items)
       setPage(nextPage)
     } catch {
       setError('Не удалось загрузить следующую страницу. Повторите попытку.')
@@ -264,18 +275,17 @@ export default function SearchPage() {
   }
 
   const totalPages = useMemo(() => {
-    const counts = []
-
-    if (ozonItems.length > 0) {
-      counts.push(Math.ceil(ozonItems.length / PER_MARKETPLACE))
-    }
-
-    if (wbItems.length > 0) {
-      counts.push(Math.ceil(wbItems.length / PER_MARKETPLACE))
-    }
-
-    return counts.length ? Math.min(...counts) : 1
+    const ozonPages = Math.floor(ozonItems.length / PER_MARKETPLACE)
+    const wbPages = Math.floor(wbItems.length / PER_MARKETPLACE)
+    const minPages = Math.min(ozonPages || 0, wbPages || 0)
+    return Math.max(1, minPages)
   }, [ozonItems.length, wbItems.length])
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages)
+    }
+  }, [page, totalPages])
 
   useEffect(() => {
     const q = searchParams.get('q') ?? ''
@@ -460,7 +470,7 @@ export default function SearchPage() {
           </button>
 
           <span className="text-sm text-gray-500">
-            Страница {page} из {totalPages}
+            Страница {Math.min(page, totalPages)} из {totalPages}
           </span>
 
           <button
