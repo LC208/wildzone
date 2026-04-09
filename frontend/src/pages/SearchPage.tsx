@@ -55,10 +55,11 @@ export default function SearchPage() {
     const history = getSearchHistory()
     const q = query.trim().toLowerCase()
     const source = [...history, ...POPULAR]
-    return source.filter((item, idx) => source.findIndex((x) => x.toLowerCase() === item.toLowerCase()) === idx)
+    return source
+      .filter((item, idx) => source.findIndex((x) => x.toLowerCase() === item.toLowerCase()) === idx)
       .filter((item) => !q || item.toLowerCase().includes(q))
       .slice(0, 8)
-  }, [query, showSuggestions])
+  }, [query])
 
   const doSearch = async (q: string, nextPage = 1) => {
     if (!q.trim()) return
@@ -128,16 +129,6 @@ export default function SearchPage() {
   function handleSaved(product: ProductData) {
     setSavedKeys((prev) => new Set(prev).add(`${product.marketplace}:${product.external_id}`))
   }
-
-  function handleCompare(product: ProductData) {
-    const current = JSON.parse(sessionStorage.getItem('wildzone_compare') || '[]') as ProductData[]
-    const exists = current.some((p) => p.marketplace === product.marketplace && p.external_id === product.external_id)
-    const next = exists ? current.filter((p) => !(p.marketplace === product.marketplace && p.external_id === product.external_id)) : [...current, product].slice(0, 2)
-    sessionStorage.setItem('wildzone_compare', JSON.stringify(next))
-    setResults((prev) => [...prev])
-  }
-
-  const compareItems = JSON.parse(sessionStorage.getItem('wildzone_compare') || '[]') as ProductData[]
 
   return (
     <div>
@@ -233,37 +224,6 @@ export default function SearchPage() {
         </button>
       </div>
 
-      {compareItems.length === 2 && (
-        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-amber-900">Сравнение товаров</h2>
-            <button
-              type="button"
-              onClick={() => {
-                sessionStorage.removeItem('wildzone_compare')
-                setResults((prev) => [...prev])
-              }}
-              className="text-sm text-amber-800 hover:underline"
-            >
-              Очистить
-            </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {compareItems.map((p) => (
-              <div key={`${p.marketplace}:${p.external_id}`} className="bg-white rounded-lg border border-amber-200 p-3">
-                <p className="font-medium text-sm line-clamp-2">{p.title}</p>
-                <div className="mt-2 text-sm space-y-1">
-                  <div>Цена: {p.price ?? '—'}</div>
-                  <div>Рейтинг: {p.rating ?? '—'}</div>
-                  <div>Доставка: {p.delivery_days ?? '—'} дн.</div>
-                  <div>Наличие: {p.in_stock ? 'Да' : 'Нет'}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {loading && <p className="text-center text-gray-400 py-10">Поиск...</p>}
       {error && <p className="text-center text-red-500 py-10">{error}</p>}
       {!loading && !error && results.length === 0 && searchParams.get('q') && (
@@ -277,8 +237,6 @@ export default function SearchPage() {
             product={p}
             isSaved={savedKeys.has(`${p.marketplace}:${p.external_id}`)}
             onSaved={handleSaved}
-            onCompare={handleCompare}
-            isCompared={compareItems.some((x) => x.marketplace === p.marketplace && x.external_id === p.external_id)}
           />
         ))}
       </div>
