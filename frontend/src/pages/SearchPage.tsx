@@ -195,7 +195,6 @@ export default function SearchPage() {
   ) {
     let items = currentItems
     let backendPage = currentBackendPage
-    let gotAny = false
 
     while (items.length < needed) {
       const fetched = await fetchMarketplaceNextPage(q, marketplace, backendPage + 1)
@@ -204,12 +203,11 @@ export default function SearchPage() {
         break
       }
 
-      gotAny = true
       backendPage += 1
       items = uniqueMerge(items, fetched)
     }
 
-    return { items, backendPage, gotAny }
+    return { items, backendPage }
   }
 
   async function ensureEnoughItemsForPage(q: string, targetPage: number) {
@@ -221,10 +219,7 @@ export default function SearchPage() {
     let nextOzonBackendPage = ozonBackendPage
     let nextWbBackendPage = wbBackendPage
 
-    const ozonNeedLoad = nextOzonItems.length < needed
-    const wbNeedLoad = nextWbItems.length < needed
-
-    if (ozonNeedLoad) {
+    if (nextOzonItems.length < needed) {
       const ozonResult = await loadMarketplaceUntilEnough(
         q,
         'ozon',
@@ -241,7 +236,7 @@ export default function SearchPage() {
       }
     }
 
-    if (wbNeedLoad) {
+    if (nextWbItems.length < needed) {
       const wbResult = await loadMarketplaceUntilEnough(
         q,
         'wb',
@@ -312,7 +307,20 @@ export default function SearchPage() {
   useEffect(() => {
     const q = searchParams.get('q') ?? ''
     setQuery(q)
-    if (q) fetchInitialSearch(q)
+
+    if (q) {
+      fetchInitialSearch(q)
+    } else {
+      setResults([])
+      setError('')
+      setPage(1)
+      setOzonItems([])
+      setWbItems([])
+      setOzonBackendPage(1)
+      setWbBackendPage(1)
+      setOzonHasMore(true)
+      setWbHasMore(true)
+    }
   }, [searchParams])
 
   function handleSubmit(e: React.FormEvent) {
@@ -320,11 +328,12 @@ export default function SearchPage() {
     const q = query.trim()
     if (!q) return
     setSearchParams({ q })
-    fetchInitialSearch(q)
   }
 
   function applyFilters() {
-    if (query.trim()) fetchInitialSearch(query.trim())
+    const q = query.trim()
+    if (!q) return
+    setSearchParams({ q })
   }
 
   function handleSaved(product: ProductData) {
@@ -356,7 +365,6 @@ export default function SearchPage() {
                       onClick={() => {
                         setQuery(item)
                         setSearchParams({ q: item })
-                        fetchInitialSearch(item)
                       }}
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
                     >
@@ -383,7 +391,6 @@ export default function SearchPage() {
               onClick={() => {
                 setQuery(item)
                 setSearchParams({ q: item })
-                fetchInitialSearch(item)
               }}
               className="px-3 py-1.5 text-sm rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition"
             >
