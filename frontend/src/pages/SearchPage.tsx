@@ -21,6 +21,8 @@ const SORT_OPTIONS = [
 ]
 
 const POPULAR = ['кроссовки', 'наушники', 'рюкзак', 'смартфон', 'пауэрбанк', 'куртка']
+const PAGE_SIZE = 100
+const CARD_COUNT = 8
 
 export default function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -56,16 +58,29 @@ export default function SearchPage() {
       .slice(0, 8)
   }, [query])
 
-  const normalizeResults = (items: ProductData[]) => {
-    const ozon = items.filter((p) => p.marketplace === 'ozon').slice(0, 4)
-    const wb = items.filter((p) => p.marketplace === 'wb').slice(0, 4)
-    return [...ozon, ...wb].slice(0, 8)
+  const buildPage = (items: ProductData[], ozonNeed = 4, wbNeed = 4) => {
+    const ozon = items.filter((p) => p.marketplace === 'ozon')
+    const wb = items.filter((p) => p.marketplace === 'wb')
+
+    const page: ProductData[] = []
+
+    page.push(...ozon.slice(0, ozonNeed))
+    page.push(...wb.slice(0, wbNeed))
+
+    if (page.length < CARD_COUNT) {
+      const used = new Set(page.map((p) => `${p.marketplace}:${p.external_id}`))
+      const rest = items.filter((p) => !used.has(`${p.marketplace}:${p.external_id}`))
+      page.push(...rest.slice(0, CARD_COUNT - page.length))
+    }
+
+    return page.slice(0, CARD_COUNT)
   }
 
-  const doSearch = async (q: string) => {
+  const fetchSearch = async (q: string) => {
     if (!q.trim()) return
     setLoading(true)
     setError('')
+
     try {
       const [sort_by, sort_order] = sort
         ? (() => {
@@ -77,7 +92,7 @@ export default function SearchPage() {
 
       const params: SearchParams = {
         query: q,
-        max_results: 100,
+        max_results: PAGE_SIZE,
         ...(minPrice ? { min_price: Number(minPrice) } : {}),
         ...(maxPrice ? { max_price: Number(maxPrice) } : {}),
         ...(minRating ? { min_rating: Number(minRating) } : {}),
@@ -90,7 +105,21 @@ export default function SearchPage() {
       const payload = data as SearchResponse | ProductData[]
       const items = Array.isArray(payload) ? payload : payload.results ?? []
 
-      setResults(normalizeResults(items))
+      const ozon = items.filter((p) => p.marketplace === 'ozon')
+      const wb = items.filter((p) => p.marketplace === 'wb')
+
+      let pageItems: ProductData[] = [
+        ...ozon.slice(0, 4),
+        ...wb.slice(0, 4),
+      ]
+
+      if (pageItems.length < CARD_COUNT) {
+        const used = new Set(pageItems.map((p) => `${p.marketplace}:${p.external_id}`))
+        const rest = items.filter((p) => !used.has(`${p.marketplace}:${p.external_id}`))
+        pageItems = [...pageItems, ...rest.slice(0, CARD_COUNT - pageItems.length)]
+      }
+
+      setResults(pageItems.slice(0, CARD_COUNT))
       saveSearchHistory(q)
     } catch {
       setError('Ошибка при поиске. Проверьте, что backend запущен.')
@@ -102,7 +131,7 @@ export default function SearchPage() {
   useEffect(() => {
     const q = searchParams.get('q') ?? ''
     setQuery(q)
-    if (q) doSearch(q)
+    if (q) fetchSearch(q)
   }, [searchParams])
 
   function handleSubmit(e: React.FormEvent) {
@@ -110,12 +139,12 @@ export default function SearchPage() {
     const q = query.trim()
     if (q) {
       setSearchParams({ q })
-      doSearch(q)
+      fetchSearch(q)
     }
   }
 
   function applyFilters() {
-    if (query.trim()) doSearch(query.trim())
+    if (query.trim()) fetchSearch(query.trim())
   }
 
   function handleSaved(product: ProductData) {
@@ -147,7 +176,7 @@ export default function SearchPage() {
                       onClick={() => {
                         setQuery(item)
                         setSearchParams({ q: item })
-                        doSearch(item)
+                        fetchSearch(item)
                       }}
                       className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition"
                     >
@@ -174,7 +203,7 @@ export default function SearchPage() {
               onClick={() => {
                 setQuery(item)
                 setSearchParams({ q: item })
-                doSearch(item)
+                fetchSearch(item)
               }}
               className="px-3 py-1.5 text-sm rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition"
             >
