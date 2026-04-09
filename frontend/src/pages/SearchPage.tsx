@@ -235,6 +235,11 @@ export default function SearchPage() {
   async function goToPage(nextPage: number) {
     if (!query.trim() || nextPage < 1) return
 
+    if (nextPage > totalPages) {
+      setError('Достигнута последняя доступная страница для маркетплейса с меньшим количеством товаров.')
+      return
+    }
+
     setLoading(true)
     setError('')
 
@@ -264,20 +269,18 @@ export default function SearchPage() {
   }
 
   const totalPages = useMemo(() => {
-    const ozonPages = Math.ceil(ozonItems.length / PER_MARKETPLACE)
-    const wbPages = Math.ceil(wbItems.length / PER_MARKETPLACE)
-    return Math.max(1, ozonPages, wbPages)
+    const counts = []
+
+    if (ozonItems.length > 0) {
+      counts.push(Math.ceil(ozonItems.length / PER_MARKETPLACE))
+    }
+
+    if (wbItems.length > 0) {
+      counts.push(Math.ceil(wbItems.length / PER_MARKETPLACE))
+    }
+
+    return counts.length ? Math.min(...counts) : 1
   }, [ozonItems.length, wbItems.length])
-
-  const canGoNext = useMemo(() => {
-    const nextPage = page + 1
-    const needed = nextPage * PER_MARKETPLACE
-
-    const enoughLocal = ozonItems.length >= needed || wbItems.length >= needed
-    const canFetchMore = ozonHasMore || wbHasMore
-
-    return enoughLocal || canFetchMore
-  }, [page, ozonItems.length, wbItems.length, ozonHasMore, wbHasMore])
 
   useEffect(() => {
     const q = searchParams.get('q') ?? ''
@@ -467,9 +470,15 @@ export default function SearchPage() {
 
           <button
             type="button"
-            disabled={!canGoNext || loading}
-            onClick={() => goToPage(page + 1)}
-            className="px-4 py-2 rounded-lg border border-gray-300 bg-white disabled:opacity-50"
+            onClick={() => {
+              if (loading) return
+              if (page >= totalPages) {
+                setError('Достигнута последняя доступная страница для маркетплейса с меньшим количеством товаров.')
+                return
+              }
+              goToPage(page + 1)
+            }}
+            className="px-4 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
           >
             Далее
           </button>
